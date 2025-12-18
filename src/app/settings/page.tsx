@@ -13,12 +13,12 @@ export default function SettingsPage() {
   const [maxTicket, setMaxTicket] = useState<number | string>("");
   const [paymentMethods, setPaymentMethods] = useState<string[]>([]);
   
-  // ★変更: カスタマイズはオブジェクトの配列で管理
+  // カスタマイズはオブジェクトの配列で管理
   const [customizations, setCustomizations] = useState<CustomOption[]>([]);
   
   const [newMethod, setNewMethod] = useState("");
   
-  // ★変更: 新規オプション入力用
+  // 新規オプション入力用
   const [newCustomName, setNewCustomName] = useState("");
   const [newCustomPrice, setNewCustomPrice] = useState("");
 
@@ -50,7 +50,7 @@ export default function SettingsPage() {
     setPaymentMethods(paymentMethods.filter(m => m !== val));
   };
 
-  // ★変更: オプション追加ロジック
+  // オプション追加ロジック
   const addCustomization = () => {
     if (newCustomName) {
       const price = parseInt(newCustomPrice) || 0;
@@ -113,7 +113,7 @@ export default function SettingsPage() {
           </div>
         </div>
 
-        {/* ★変更: 別注オプション設定（価格付き） */}
+        {/* 別注オプション設定（価格付き・マイナス対応） */}
         <div className="mb-8">
           <label className="block text-gray-700 font-bold mb-2">別注オプション (詳細設定)</label>
           <div className="flex gap-2 mb-3">
@@ -128,18 +128,33 @@ export default function SettingsPage() {
               type="number"
               value={newCustomPrice}
               onChange={(e) => setNewCustomPrice(e.target.value)}
-              placeholder="価格 (0可)"
+              placeholder="価格 (値引きは -50)"
               className="flex-1 border p-2 rounded-lg outline-none"
             />
             <button onClick={addCustomization} className="bg-orange-500 text-white px-4 rounded-lg font-bold hover:bg-orange-600">追加</button>
           </div>
           <div className="space-y-2">
             {customizations.map((item, index) => (
-              <div key={index} className="flex justify-between items-center bg-orange-50 px-3 py-2 rounded-lg border border-orange-200">
+              // ★変更: 価格がマイナスの場合は赤系のスタイルにする
+              <div 
+                key={index} 
+                className={`flex justify-between items-center px-3 py-2 rounded-lg border ${
+                  item.price < 0 
+                    ? 'bg-red-50 border-red-200' 
+                    : 'bg-orange-50 border-orange-200'
+                }`}
+              >
                 <div className="flex items-center gap-2">
-                  <span className="font-bold text-orange-900">{item.name}</span>
-                  <span className="text-xs bg-white px-2 py-0.5 rounded border border-orange-300 text-orange-600 font-mono">
-                    +{item.price}円
+                  <span className={`font-bold ${item.price < 0 ? 'text-red-900' : 'text-orange-900'}`}>
+                    {item.name}
+                  </span>
+                  <span className={`text-xs bg-white px-2 py-0.5 rounded border font-mono ${
+                    item.price < 0 
+                      ? 'border-red-300 text-red-600' 
+                      : 'border-orange-300 text-orange-600'
+                  }`}>
+                    {/* プラスの場合は+を付与、マイナスはそのまま */}
+                    {item.price > 0 ? '+' : ''}{item.price}円
                   </span>
                 </div>
                 <button onClick={() => removeCustomization(index)} className="text-red-500 hover:text-red-700 font-bold px-2">×</button>

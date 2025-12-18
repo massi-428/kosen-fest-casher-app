@@ -2,18 +2,15 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-
-type CustomOption = {
-  name: string;
-  price: number;
-};
+// モーダルコンポーネントをインポート
+import { ResultModal, ConfirmModal, DetailModal, CustomOption } from '@/components/order/OrderModals';
+import { HamburgerMenu } from '@/components/common/HamburgerMenu';
 
 type OrderItem = {
   productName: string;
   price: number;
   quantity: number;
   detail?: string; 
-  // 選択されたオプションリスト
   selectedOptions?: CustomOption[]; 
 };
 
@@ -21,134 +18,6 @@ type Product = {
   _id: string;
   name: string;
   price: number;
-};
-
-// --- コンポーネント群 ---
-const ResultModal = ({ isOpen, title, message, type, onClose }: any) => {
-  if (!isOpen) return null;
-  return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black bg-opacity-50 transition-opacity animate-fadeIn">
-      <div className="bg-white rounded-xl shadow-2xl p-6 w-96 transform transition-all scale-100 animate-bounceIn">
-        <div className={`text-center mb-4 text-4xl ${type === 'success' ? 'text-green-500' : 'text-red-500'}`}>
-          {type === 'success' ? '✓' : '!'}
-        </div>
-        <h3 className="text-xl font-bold text-gray-800 text-center mb-2">{title}</h3>
-        <p className="text-gray-600 text-center mb-6 whitespace-pre-wrap">{message}</p>
-        <button onClick={onClose} className="w-full py-3 bg-blue-600 text-white rounded-lg font-bold hover:bg-blue-700 transition">閉じる</button>
-      </div>
-    </div>
-  );
-};
-
-const ConfirmModal = ({ isOpen, message, onConfirm, onCancel }: any) => {
-  if (!isOpen) return null;
-  return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black bg-opacity-50">
-      <div className="bg-white rounded-xl shadow-2xl p-6 w-96">
-        <div className="text-center mb-4 text-4xl text-yellow-500">?</div>
-        <h3 className="text-xl font-bold text-gray-800 text-center mb-4">確認</h3>
-        <p className="text-gray-600 text-center mb-6 whitespace-pre-wrap">{message}</p>
-        <div className="flex gap-3">
-          <button onClick={onCancel} className="flex-1 py-3 bg-gray-200 text-gray-700 rounded-lg font-bold hover:bg-gray-300 transition">キャンセル</button>
-          <button onClick={onConfirm} className="flex-1 py-3 bg-blue-600 text-white rounded-lg font-bold hover:bg-blue-700 transition">実行する</button>
-        </div>
-      </div>
-    </div>
-  );
-};
-
-const DetailModal = ({ isOpen, productName, currentDetail, currentOptions, optionsList, onSave, onClose }: any) => {
-  const [noteVal, setNoteVal] = useState<string>("");
-  const [selectedOpts, setSelectedOpts] = useState<CustomOption[]>([]);
-  
-  useEffect(() => { 
-    setNoteVal(currentDetail || ""); 
-    setSelectedOpts(currentOptions || []);
-  }, [currentDetail, currentOptions, isOpen]);
-  
-  if (!isOpen) return null;
-
-  const toggleOption = (option: CustomOption) => {
-    const exists = selectedOpts.find(o => o.name === option.name);
-    if (exists) {
-      setSelectedOpts(selectedOpts.filter(o => o.name !== option.name));
-    } else {
-      setSelectedOpts([...selectedOpts, option]);
-    }
-  };
-
-  return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black bg-opacity-50">
-      <div className="bg-white rounded-xl shadow-2xl p-6 w-96 max-h-[90vh] overflow-y-auto">
-        <h3 className="text-lg font-bold text-gray-800 mb-2">詳細設定: {productName}</h3>
-        
-        <div className="mb-4">
-          <p className="text-xs text-gray-500 mb-2">オプションを選択 (タップで切替)</p>
-          <div className="flex flex-wrap gap-2">
-            {optionsList.map((opt: CustomOption, index: number) => {
-              if (!opt.name) return null;
-              const isSelected = selectedOpts.some(o => o.name === opt.name);
-              return (
-                <button
-                  key={`${opt.name}-${index}`} 
-                  onClick={() => toggleOption(opt)}
-                  className={`px-3 py-2 rounded-lg text-sm border flex items-center gap-1 transition ${
-                    isSelected 
-                      ? 'bg-orange-500 text-white border-orange-600 shadow-md' 
-                      : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
-                  }`}
-                >
-                  <span>{opt.name}</span>
-                  {opt.price > 0 && <span className="text-xs opacity-80">(+{opt.price}円)</span>}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
-        <p className="text-xs text-gray-500 mb-1">備考欄 (自由入力)</p>
-        <textarea
-          value={noteVal}
-          onChange={(e) => setNoteVal(e.target.value)}
-          className="w-full border border-gray-300 p-2 rounded-lg h-24 mb-4 outline-none focus:ring-2 focus:ring-blue-500"
-          placeholder="手入力も可能です"
-        />
-        <div className="flex gap-3">
-          <button onClick={onClose} className="flex-1 py-2 bg-gray-200 text-gray-700 rounded-lg font-bold hover:bg-gray-300">キャンセル</button>
-          <button onClick={() => onSave(noteVal, selectedOpts)} className="flex-1 py-2 bg-blue-600 text-white rounded-lg font-bold hover:bg-blue-700">保存</button>
-        </div>
-      </div>
-    </div>
-  );
-};
-
-const HamburgerMenu = ({ onNavigate, onReset }: { onNavigate: (path: string) => void, onReset: () => void }) => {
-  const [isOpen, setIsOpen] = useState(false);
-  return (
-    <div className="relative z-50">
-      <button onClick={() => setIsOpen(!isOpen)} className="p-2 text-gray-600 hover:bg-gray-100 rounded focus:outline-none">
-        <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          {isOpen ? <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /> : <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />}
-        </svg>
-      </button>
-      {isOpen && (
-        <>
-          <div className="fixed inset-0 z-40" onClick={() => setIsOpen(false)}></div>
-          <div className="absolute right-0 mt-2 w-56 bg-white rounded-lg shadow-xl border border-gray-100 animate-fadeIn origin-top-right overflow-hidden z-50">
-            <div className="py-1">
-              <button onClick={() => { onNavigate('/settings'); setIsOpen(false); }} className="block w-full text-left px-4 py-3 text-gray-700 hover:bg-blue-50 hover:text-blue-600 transition">⚙️ 設定画面へ</button>
-              {/* ★追加: 営業日報へのリンク */}
-              <button onClick={() => { onNavigate('/report'); setIsOpen(false); }} className="block w-full text-left px-4 py-3 text-gray-700 hover:bg-blue-50 hover:text-blue-600 transition">📈 営業日報へ</button>
-              <button onClick={() => { onNavigate('/history'); setIsOpen(false); }} className="block w-full text-left px-4 py-3 text-gray-700 hover:bg-blue-50 hover:text-blue-600 transition">📊 注文履歴 (管理) へ</button>
-              <button onClick={() => { onNavigate('/kds'); setIsOpen(false); }} className="block w-full text-left px-4 py-3 text-gray-700 hover:bg-blue-50 hover:text-blue-600 transition">📺 KDS (調理画面) へ</button>
-              <div className="border-t border-gray-100 my-1"></div>
-              <button onClick={() => { onReset(); setIsOpen(false); }} className="block w-full text-left px-4 py-3 text-red-600 hover:bg-red-50 transition text-sm">⚠️ データリセット</button>
-            </div>
-          </div>
-        </>
-      )}
-    </div>
-  );
 };
 
 export default function OrderPage() {
@@ -175,6 +44,8 @@ export default function OrderPage() {
 
   const [resultModal, setResultModal] = useState({ isOpen: false, title: "", message: "", type: "success" });
   const [confirmModal, setConfirmModal] = useState({ isOpen: false, message: "", onConfirm: () => {} });
+  
+  // モーダル用state
   const [detailModal, setDetailModal] = useState<{ isOpen: boolean, index: number, productName: string, currentDetail: string, currentOptions: CustomOption[] }>({ isOpen: false, index: -1, productName: "", currentDetail: "", currentOptions: [] });
 
   const showResult = (title: string, message: string, type: "success" | "error" = "success") => {
@@ -238,7 +109,7 @@ export default function OrderPage() {
       if (nextNum > maxTicketNumber) nextNum = 1;
       loopCount++;
     }
-    setCurrentTicket(loopCount >= maxTicketNumber ? "満席" : String(nextNum));
+    setCurrentTicket(loopCount >= maxTicketNumber ? "整理券切れ" : String(nextNum));
   }, [activeTickets, lastIssuedNumber, maxTicketNumber]);
 
   // カート操作
@@ -294,7 +165,7 @@ export default function OrderPage() {
   // 注文確定
   const handleOrder = async () => {
     if (cartItems.length === 0 || isEditMode) return;
-    if (currentTicket === "満席") return showResult("満席です", "整理券が満席です。", "error");
+    if (currentTicket === "整理券切れ") return showResult("整理券切れです", "整理券切れのため発券できません。", "error");
     if (!selectedPayment) return showResult("エラー", "決済方法を選択してください", "error");
 
     setLoading(true);
@@ -342,7 +213,7 @@ export default function OrderPage() {
     }
   };
 
-  // その他機能（省略なし）
+  // その他機能
   const handleReturnTicket = (num: number) => {
     showConfirm(`${num}番の整理券を\n返却（回収）済みにしますか？`, async () => {
       closeConfirm();
@@ -393,6 +264,8 @@ export default function OrderPage() {
     <div className="flex h-screen bg-gray-100 overflow-hidden font-sans relative">
       <ResultModal isOpen={resultModal.isOpen} title={resultModal.title} message={resultModal.message} type={resultModal.type} onClose={closeResult} />
       <ConfirmModal isOpen={confirmModal.isOpen} message={confirmModal.message} onConfirm={confirmModal.onConfirm} onCancel={closeConfirm} />
+      
+      {/* 詳細設定モーダル (コンポーネントを利用) */}
       <DetailModal 
         isOpen={detailModal.isOpen} 
         productName={detailModal.productName} 
@@ -445,7 +318,11 @@ export default function OrderPage() {
           <>
             <div className="p-5 bg-blue-600 text-white shadow-md z-10">
               <div className="flex justify-between items-center mb-2"><label className="text-sm font-bold opacity-90">次の整理券番号</label><span className="text-xs bg-blue-500 px-2 py-1 rounded">MAX: {maxTicketNumber}</span></div>
-              <div className="text-center bg-white text-blue-600 rounded-lg py-2 shadow-inner"><span className="text-5xl font-black tracking-widest">{currentTicket}</span></div>
+              <div className="text-center bg-white text-blue-600 rounded-lg py-2 shadow-inner">
+                <span className={`${currentTicket.length > 3 ? "text-3xl" : "text-5xl"} font-black tracking-widest`}>
+                  {currentTicket}
+                </span>
+              </div>
             </div>
             
             <div className="flex-1 overflow-y-auto p-4 bg-gray-50">
@@ -460,6 +337,7 @@ export default function OrderPage() {
                           <button onClick={() => removeFromCart(index)} className="text-red-500 hover:bg-red-100 rounded-full w-8 h-8 flex items-center justify-center">✕</button>
                         </div>
                         
+                        {/* 詳細設定・オプション表示ボタン */}
                         <button 
                           onClick={() => openDetailModal(index, item)}
                           className={`text-left text-sm px-2 py-1 rounded border border-dashed transition w-full ${
@@ -471,8 +349,9 @@ export default function OrderPage() {
                           <div className="flex flex-wrap gap-1 items-center">
                             {(item.selectedOptions && item.selectedOptions.length > 0) ? (
                               item.selectedOptions.map((opt, i) => (
-                                <span key={i} className="bg-orange-100 text-orange-800 text-xs px-1 rounded">
-                                  {opt.name}{opt.price > 0 && `(+${opt.price})`}
+                                // マイナス価格のバッジ表示 (赤背景)
+                                <span key={i} className={`text-xs px-1 rounded border ${opt.price < 0 ? 'bg-red-50 text-red-800 border-red-200' : 'bg-orange-100 text-orange-800 border-orange-200'}`}>
+                                  {opt.name}{opt.price !== 0 && `(${opt.price > 0 ? '+' : ''}${opt.price})`}
                                 </span>
                               ))
                             ) : null}
@@ -484,7 +363,12 @@ export default function OrderPage() {
                         <div className="flex justify-between items-end mt-1">
                           <div className="text-sm text-gray-500 self-center">
                             @{item.price.toLocaleString()}
-                            {optionsPrice > 0 && <span className="text-orange-600 text-xs ml-1">(OP +{optionsPrice})</span>}
+                            {/* オプション合計の表示 (マイナスの場合は赤字) */}
+                            {optionsPrice !== 0 && (
+                              <span className={`text-xs ml-1 ${optionsPrice < 0 ? 'text-red-600' : 'text-orange-600'}`}>
+                                (OP {optionsPrice > 0 ? '+' : ''}{optionsPrice})
+                              </span>
+                            )}
                           </div>
                           <div className="flex items-center border border-gray-300 rounded-lg bg-gray-100 overflow-hidden shadow-sm">
                             <button onClick={() => updateQuantity(index, item.quantity - 1)} className={`w-10 h-10 flex items-center justify-center font-bold text-lg transition ${item.quantity <= 1 ? 'text-gray-300 cursor-not-allowed' : 'text-blue-600 hover:bg-blue-100'}`} disabled={item.quantity <= 1}>−</button>
@@ -512,15 +396,15 @@ export default function OrderPage() {
               <div className="mb-4">
                 <div className="grid grid-cols-2 gap-2 mb-3">
                   {paymentMethods.map((method) => (
-                    <button key={method} onClick={() => setSelectedPayment(method)} className={`py-2 px-1 rounded text-sm font-bold border transition ${selectedPayment === method ? 'bg-blue-600 text-white border-blue-600 shadow-md' : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'}`}>{method}</button>
+                    <button key={method} onClick={() => setSelectedPayment(method)} className={`py-4 px-3 rounded text-md font-bold border transition ${selectedPayment === method ? 'bg-blue-600 text-white border-blue-600 shadow-md' : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'}`}>{method}</button>
                   ))}
                 </div>
                 <div>
-                  <p className="text-xs font-bold text-gray-500 mb-1">注文全体の備考</p>
+                  <p className="text-sm font-bold text-gray-500 mb-1">注文全体の備考</p>
                   <textarea value={note} onChange={(e) => setNote(e.target.value)} className="w-full border border-gray-300 p-2 rounded-lg text-sm h-12 resize-none outline-none focus:ring-2 focus:ring-blue-500" placeholder="テイクアウト、領収書など" />
                 </div>
               </div>
-              <button onClick={handleOrder} disabled={loading || cartItems.length === 0 || currentTicket === "満席" || !selectedPayment} className={`w-full py-4 rounded-xl text-lg font-bold text-white shadow transition-all ${loading || cartItems.length === 0 || currentTicket === "満席" || !selectedPayment ? 'bg-gray-400 cursor-not-allowed' : 'bg-green-600 hover:bg-green-700 hover:shadow-lg transform active:scale-95'}`}>{loading ? '処理中...' : '注文を確定する'}</button>
+              <button onClick={handleOrder} disabled={loading || cartItems.length === 0 || currentTicket === "整理券切れ" || !selectedPayment} className={`w-full py-4 rounded-xl text-lg font-bold text-white shadow transition-all ${loading || cartItems.length === 0 || currentTicket === "整理券切れ" || !selectedPayment ? 'bg-gray-400 cursor-not-allowed' : 'bg-green-600 hover:bg-green-700 hover:shadow-lg transform active:scale-95'}`}>{loading ? '処理中...' : '注文を確定する'}</button>
             </div>
           </>
         )}

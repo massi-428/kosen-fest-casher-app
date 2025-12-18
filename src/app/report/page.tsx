@@ -3,11 +3,17 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 
+type CustomOption = {
+  name: string;
+  price: number;
+};
+
 type OrderItem = {
   productName: string;
   quantity: number;
   amount: number;
   detail?: string;
+  selectedOptions?: CustomOption[];
 };
 
 type Order = {
@@ -80,7 +86,6 @@ export default function ReportPage() {
       });
     });
 
-    // 配列にして売上金額順にソート
     return Object.entries(summary)
       .map(([name, data]) => ({ name, ...data }))
       .sort((a, b) => b.amount - a.amount);
@@ -116,6 +121,30 @@ export default function ReportPage() {
   }, [orders]);
   
   const maxHourlySales = Math.max(...hourlySales, 1);
+
+  // 5. 別注オプション別集計
+  const optionSummary = useMemo(() => {
+    const summary: { [key: string]: { count: number; amount: number } } = {};
+
+    orders.forEach(order => {
+      order.items.forEach(item => {
+        if (item.selectedOptions && Array.isArray(item.selectedOptions)) {
+          item.selectedOptions.forEach(opt => {
+            if (!summary[opt.name]) {
+              summary[opt.name] = { count: 0, amount: 0 };
+            }
+            // 商品が2個ならオプションも2個分としてカウント
+            summary[opt.name].count += item.quantity;
+            summary[opt.name].amount += (opt.price * item.quantity);
+          });
+        }
+      });
+    });
+
+    return Object.entries(summary)
+      .map(([name, data]) => ({ name, ...data }))
+      .sort((a, b) => b.amount - a.amount || b.count - a.count);
+  }, [orders]);
 
   // 日付操作
   const changeDate = (diff: number) => {
@@ -181,14 +210,14 @@ export default function ReportPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
         
         {/* 商品別売上ランキング */}
         <div className="bg-white p-6 rounded-xl shadow">
           <h2 className="text-xl font-bold text-gray-700 mb-4 border-b pb-2">商品別売上</h2>
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto max-h-80 overflow-y-auto">
             <table className="min-w-full">
-              <thead>
+              <thead className="sticky top-0 bg-white">
                 <tr className="text-left text-sm text-gray-500">
                   <th className="pb-2">順位</th>
                   <th className="pb-2">商品名</th>
@@ -240,8 +269,8 @@ export default function ReportPage() {
               {hourlySales.map((amount, hour) => (
                 <div key={hour} className="flex-1 flex flex-col justify-end items-center group relative h-full">
                   {amount > 0 && (
-                    <div className="absolute -top-8 bg-gray-800 text-white text-xs py-1 px-2 rounded opacity-0 group-hover:opacity-100 transition pointer-events-none z-10">
-                      ¥{amount.toLocaleString()}
+                    <div className="absolute -top-8 bg-gray-800 text-white text-xs py-1 px-2 rounded opacity-0 group-hover:opacity-100 transition pointer-events-none z-10 whitespace-nowrap">
+                      {hour}時: ¥{amount.toLocaleString()}
                     </div>
                   )}
                   <div 
@@ -254,8 +283,42 @@ export default function ReportPage() {
             </div>
           </div>
         </div>
-
       </div>
+
+      {/* ★別注オプション実績 */}
+      <div className="bg-white p-6 rounded-xl shadow">
+        <h2 className="text-xl font-bold text-gray-700 mb-4 border-b pb-2 flex items-center gap-2">
+          <span>✨</span> 別注オプション実績
+        </h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {optionSummary.length === 0 ? (
+            <p className="text-gray-400 col-span-3 py-4 text-center">別注オプションの利用はありません</p>
+          ) : (
+            optionSummary.map((item) => (
+              // ★変更: 金額がマイナスの場合のスタイル
+              <div 
+                key={item.name} 
+                className={`flex justify-between items-center p-3 rounded-lg border ${
+                  item.amount < 0 
+                    ? 'bg-red-50 border-red-200' 
+                    : 'bg-orange-50 border-orange-100'
+                }`}
+              >
+                <span className="font-bold text-gray-800">{item.name}</span>
+                <div className="text-right">
+                  <span className="text-sm text-gray-600 mr-3">{item.count}回</span>
+                  <span className={`font-bold font-mono ${
+                    item.amount < 0 ? 'text-red-600' : 'text-orange-700'
+                  }`}>
+                    ¥{item.amount.toLocaleString()}
+                  </span>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+
     </div>
   );
 }
