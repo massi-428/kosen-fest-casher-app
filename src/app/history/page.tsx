@@ -1,6 +1,12 @@
 "use client";
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useRouter } from 'next/navigation';
+
+type CustomOption = {
+  name: string;
+  price: number;
+};
 
 // 型定義
 type OrderItem = {
@@ -8,6 +14,7 @@ type OrderItem = {
   quantity: number;
   amount: number;
   detail?: string;
+  selectedOptions?: CustomOption[];
 };
 
 type Order = {
@@ -22,6 +29,7 @@ type Order = {
 };
 
 export default function HistoryPage() {
+  const router = useRouter();
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState("");
@@ -112,6 +120,13 @@ export default function HistoryPage() {
       <div className="flex justify-between items-center mb-6 bg-white p-4 rounded-xl shadow-md">
         <h1 className="text-3xl font-bold text-gray-800">注文履歴と管理</h1>
         <div className="flex items-center gap-4">
+          {/* 注文画面へ戻るボタンを追加 */}
+          <button 
+            onClick={() => router.push('/order')}
+            className="text-gray-500 hover:text-gray-700 font-bold px-4 py-2 bg-gray-100 rounded-lg transition mr-2"
+          >
+            ← 注文画面へ
+          </button>
           <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value as 'all' | 'active' | 'completed')} className="border border-gray-300 p-2 rounded-lg">
             <option value="all">全て表示</option>
             <option value="active">調理中 (未完了)</option>
@@ -172,7 +187,15 @@ export default function HistoryPage() {
                       {order.items && order.items.map((item, idx) => (
                         <li key={idx} className="text-xs">
                           {item.productName} × {item.quantity}
-                          {item.detail && <span className="ml-1 text-blue-600 font-bold">({item.detail})</span>}
+                          {/* 詳細表示 */}
+                          <div className="flex flex-wrap gap-1 mt-0.5">
+                            {item.selectedOptions && item.selectedOptions.map((opt, i) => (
+                              <span key={i} className="bg-orange-50 text-orange-800 px-1 rounded text-[10px] border border-orange-200">
+                                {opt.name}{opt.price > 0 && `(+${opt.price})`}
+                              </span>
+                            ))}
+                            {item.detail && <span className="text-[10px] text-blue-600 font-bold ml-1">({item.detail})</span>}
+                          </div>
                         </li>
                       ))}
                     </ul>
@@ -189,7 +212,6 @@ export default function HistoryPage() {
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                     <div className="flex justify-end gap-2">
-                      {/* 再注文ボタンを削除しました */}
                       {order.status === 'active' && (
                         <button onClick={() => toggleStatus(order)} className="text-green-600 hover:text-green-900 bg-green-50 px-3 py-1 rounded-lg border border-green-200 transition">完了/返却</button>
                       )}

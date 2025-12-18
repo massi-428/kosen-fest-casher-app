@@ -15,7 +15,10 @@ export async function GET() {
         key: 'app_config', 
         maxTicketNumber: 30,
         paymentMethods: ['現金', 'クレジットカード', 'PayPay', '交通系IC'],
-        customizations: ['氷少なめ', 'ネギ抜き', 'テイクアウト', '大盛り']
+        customizations: [
+          { name: '氷少なめ', price: 0 },
+          { name: '大盛り', price: 100 }
+        ]
       });
     }
 
@@ -32,19 +35,10 @@ export async function POST(request: Request) {
     
     const updateData: any = {};
 
-    if (body.maxTicketNumber) {
-      const maxNum = Number(body.maxTicketNumber);
-      if (maxNum > 0) updateData.maxTicketNumber = maxNum;
-    }
-
-    if (body.paymentMethods && Array.isArray(body.paymentMethods)) {
-      updateData.paymentMethods = body.paymentMethods;
-    }
-
-    // ★追加: 別注オプションの更新
-    if (body.customizations && Array.isArray(body.customizations)) {
-      updateData.customizations = body.customizations;
-    }
+    if (body.maxTicketNumber) updateData.maxTicketNumber = Number(body.maxTicketNumber);
+    if (body.paymentMethods) updateData.paymentMethods = body.paymentMethods;
+    // ★変更: オブジェクト配列として保存
+    if (body.customizations) updateData.customizations = body.customizations;
 
     const updated = await Setting.findOneAndUpdate(
       { key: 'app_config' },

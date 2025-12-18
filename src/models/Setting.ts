@@ -15,10 +15,18 @@ const SettingSchema = new Schema({
     type: [String],
     default: ['現金', 'クレジットカード', 'PayPay', '交通系IC'],
   },
-  // ★追加: よく使う別注オプション
+  // ★変更: 名前と価格を持つオブジェクトの配列にする
   customizations: {
-    type: [String],
-    default: ['氷少なめ', 'ネギ抜き', 'テイクアウト', '大盛り', 'ドレッシング別'],
+    type: [{
+      name: String,
+      price: Number
+    }],
+    default: [
+      { name: '氷少なめ', price: 0 },
+      { name: 'ネギ抜き', price: 0 },
+      { name: '大盛り', price: 100 },
+      { name: 'テイクアウト', price: 0 }
+    ],
   }
 }, { timestamps: true });
 

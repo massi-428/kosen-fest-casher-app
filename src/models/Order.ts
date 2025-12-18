@@ -5,9 +5,13 @@ const OrderSchema = new Schema({
   items: [{
     productName: { type: String, required: true },
     quantity: { type: Number, required: true },
-    amount: { type: Number, required: true },
-    // ★追加: 商品ごとの詳細設定（トッピングやカスタマイズ内容）
-    detail: { type: String, required: false, default: '' }
+    amount: { type: Number, required: true }, // オプション込みの小計
+    detail: { type: String, required: false, default: '' }, // 自由記述メモ
+    // ★追加: 選択された有料/無料オプション
+    selectedOptions: [{
+      name: String,
+      price: Number
+    }]
   }],
   totalAmount: { type: Number, required: true },
   status: {
@@ -15,15 +19,8 @@ const OrderSchema = new Schema({
     enum: ['active', 'completed', 'pending'],
     default: 'active',
   },
-  paymentMethod: {
-    type: String,
-    required: false,
-  },
-  note: { // 注文全体の備考も残しておきます
-    type: String,
-    required: false,
-    default: '',
-  },
+  paymentMethod: { type: String, required: false },
+  note: { type: String, required: false, default: '' },
   orderDate: { type: Date, default: Date.now }
 }, { timestamps: true });
 

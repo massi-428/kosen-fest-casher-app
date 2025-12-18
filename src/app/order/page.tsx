@@ -3,11 +3,18 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 
+type CustomOption = {
+  name: string;
+  price: number;
+};
+
 type OrderItem = {
   productName: string;
   price: number;
   quantity: number;
-  detail?: string; // 詳細設定
+  detail?: string; 
+  // 選択されたオプションリスト
+  selectedOptions?: CustomOption[]; 
 };
 
 type Product = {
@@ -16,7 +23,7 @@ type Product = {
   price: number;
 };
 
-// --- ポップアップコンポーネント ---
+// --- コンポーネント群 ---
 const ResultModal = ({ isOpen, title, message, type, onClose }: any) => {
   if (!isOpen) return null;
   return (
@@ -50,48 +57,65 @@ const ConfirmModal = ({ isOpen, message, onConfirm, onCancel }: any) => {
   );
 };
 
-// 詳細設定モーダル
-const DetailModal = ({ isOpen, productName, currentDetail, options, onSave, onClose }: any) => {
-  const [val, setVal] = useState<string>(currentDetail);
-  useEffect(() => { setVal(currentDetail); }, [currentDetail, isOpen]);
+const DetailModal = ({ isOpen, productName, currentDetail, currentOptions, optionsList, onSave, onClose }: any) => {
+  const [noteVal, setNoteVal] = useState<string>("");
+  const [selectedOpts, setSelectedOpts] = useState<CustomOption[]>([]);
+  
+  useEffect(() => { 
+    setNoteVal(currentDetail || ""); 
+    setSelectedOpts(currentOptions || []);
+  }, [currentDetail, currentOptions, isOpen]);
   
   if (!isOpen) return null;
 
-  const addOption = (option: string) => {
-    if (val.includes(option)) return;
-    setVal((prev: string) => prev ? `${prev}、${option}` : option);
+  const toggleOption = (option: CustomOption) => {
+    const exists = selectedOpts.find(o => o.name === option.name);
+    if (exists) {
+      setSelectedOpts(selectedOpts.filter(o => o.name !== option.name));
+    } else {
+      setSelectedOpts([...selectedOpts, option]);
+    }
   };
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black bg-opacity-50">
-      <div className="bg-white rounded-xl shadow-2xl p-6 w-96">
+      <div className="bg-white rounded-xl shadow-2xl p-6 w-96 max-h-[90vh] overflow-y-auto">
         <h3 className="text-lg font-bold text-gray-800 mb-2">詳細設定: {productName}</h3>
         
-        <div className="mb-3">
-          <p className="text-xs text-gray-500 mb-2">よく使うオプション (タップして追加)</p>
+        <div className="mb-4">
+          <p className="text-xs text-gray-500 mb-2">オプションを選択 (タップで切替)</p>
           <div className="flex flex-wrap gap-2">
-            {options.map((opt: string) => (
-              <button
-                key={opt}
-                onClick={() => addOption(opt)}
-                className="px-2 py-1 bg-orange-50 border border-orange-200 text-orange-700 rounded text-xs hover:bg-orange-100 transition"
-              >
-                + {opt}
-              </button>
-            ))}
+            {optionsList.map((opt: CustomOption, index: number) => {
+              if (!opt.name) return null;
+              const isSelected = selectedOpts.some(o => o.name === opt.name);
+              return (
+                <button
+                  key={`${opt.name}-${index}`} 
+                  onClick={() => toggleOption(opt)}
+                  className={`px-3 py-2 rounded-lg text-sm border flex items-center gap-1 transition ${
+                    isSelected 
+                      ? 'bg-orange-500 text-white border-orange-600 shadow-md' 
+                      : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
+                  }`}
+                >
+                  <span>{opt.name}</span>
+                  {opt.price > 0 && <span className="text-xs opacity-80">(+{opt.price}円)</span>}
+                </button>
+              );
+            })}
           </div>
         </div>
 
         <p className="text-xs text-gray-500 mb-1">備考欄 (自由入力)</p>
         <textarea
-          value={val}
-          onChange={(e) => setVal(e.target.value)}
+          value={noteVal}
+          onChange={(e) => setNoteVal(e.target.value)}
           className="w-full border border-gray-300 p-2 rounded-lg h-24 mb-4 outline-none focus:ring-2 focus:ring-blue-500"
           placeholder="手入力も可能です"
         />
         <div className="flex gap-3">
           <button onClick={onClose} className="flex-1 py-2 bg-gray-200 text-gray-700 rounded-lg font-bold hover:bg-gray-300">キャンセル</button>
-          <button onClick={() => onSave(val)} className="flex-1 py-2 bg-blue-600 text-white rounded-lg font-bold hover:bg-blue-700">保存</button>
+          <button onClick={() => onSave(noteVal, selectedOpts)} className="flex-1 py-2 bg-blue-600 text-white rounded-lg font-bold hover:bg-blue-700">保存</button>
         </div>
       </div>
     </div>
@@ -110,10 +134,11 @@ const HamburgerMenu = ({ onNavigate, onReset }: { onNavigate: (path: string) => 
       {isOpen && (
         <>
           <div className="fixed inset-0 z-40" onClick={() => setIsOpen(false)}></div>
-          {/* z-50 を明示的に指定し、ドロップダウンが他の要素の上に確実に表示されるようにする */}
           <div className="absolute right-0 mt-2 w-56 bg-white rounded-lg shadow-xl border border-gray-100 animate-fadeIn origin-top-right overflow-hidden z-50">
             <div className="py-1">
               <button onClick={() => { onNavigate('/settings'); setIsOpen(false); }} className="block w-full text-left px-4 py-3 text-gray-700 hover:bg-blue-50 hover:text-blue-600 transition">⚙️ 設定画面へ</button>
+              {/* ★追加: 営業日報へのリンク */}
+              <button onClick={() => { onNavigate('/report'); setIsOpen(false); }} className="block w-full text-left px-4 py-3 text-gray-700 hover:bg-blue-50 hover:text-blue-600 transition">📈 営業日報へ</button>
               <button onClick={() => { onNavigate('/history'); setIsOpen(false); }} className="block w-full text-left px-4 py-3 text-gray-700 hover:bg-blue-50 hover:text-blue-600 transition">📊 注文履歴 (管理) へ</button>
               <button onClick={() => { onNavigate('/kds'); setIsOpen(false); }} className="block w-full text-left px-4 py-3 text-gray-700 hover:bg-blue-50 hover:text-blue-600 transition">📺 KDS (調理画面) へ</button>
               <div className="border-t border-gray-100 my-1"></div>
@@ -138,7 +163,8 @@ export default function OrderPage() {
   const [cartItems, setCartItems] = useState<OrderItem[]>([]);
   
   const [paymentMethods, setPaymentMethods] = useState<string[]>([]);
-  const [customizationOptions, setCustomizationOptions] = useState<string[]>([]);
+  const [customizationOptions, setCustomizationOptions] = useState<CustomOption[]>([]);
+  
   const [selectedPayment, setSelectedPayment] = useState<string>("");
   const [note, setNote] = useState("");
 
@@ -149,7 +175,7 @@ export default function OrderPage() {
 
   const [resultModal, setResultModal] = useState({ isOpen: false, title: "", message: "", type: "success" });
   const [confirmModal, setConfirmModal] = useState({ isOpen: false, message: "", onConfirm: () => {} });
-  const [detailModal, setDetailModal] = useState({ isOpen: false, index: -1, productName: "", currentDetail: "" });
+  const [detailModal, setDetailModal] = useState<{ isOpen: boolean, index: number, productName: string, currentDetail: string, currentOptions: CustomOption[] }>({ isOpen: false, index: -1, productName: "", currentDetail: "", currentOptions: [] });
 
   const showResult = (title: string, message: string, type: "success" | "error" = "success") => {
     setResultModal({ isOpen: true, title, message, type });
@@ -220,7 +246,9 @@ export default function OrderPage() {
     if (isEditMode) return;
     
     setCartItems((prev) => {
-      const existingIndex = prev.findIndex((item) => item.productName === product.name && !item.detail);
+      const existingIndex = prev.findIndex((item) => 
+        item.productName === product.name && !item.detail && (!item.selectedOptions || item.selectedOptions.length === 0)
+      );
       
       if (existingIndex !== -1) {
         return prev.map((item, index) => 
@@ -229,7 +257,7 @@ export default function OrderPage() {
             : item
         );
       } else {
-        return [...prev, { productName: product.name, price: product.price, quantity: 1, detail: "" }];
+        return [...prev, { productName: product.name, price: product.price, quantity: 1, detail: "", selectedOptions: [] }];
       }
     });
   };
@@ -244,15 +272,24 @@ export default function OrderPage() {
   };
 
   const openDetailModal = (index: number, item: OrderItem) => {
-    setDetailModal({ isOpen: true, index, productName: item.productName, currentDetail: item.detail || "" });
+    setDetailModal({ 
+      isOpen: true, 
+      index, 
+      productName: item.productName, 
+      currentDetail: item.detail || "",
+      currentOptions: item.selectedOptions || [] 
+    });
   };
 
-  const saveDetail = (newDetail: string) => {
-    setCartItems(prev => prev.map((item, i) => i === detailModal.index ? { ...item, detail: newDetail } : item));
+  const saveDetail = (newDetail: string, newOptions: CustomOption[]) => {
+    setCartItems(prev => prev.map((item, i) => i === detailModal.index ? { ...item, detail: newDetail, selectedOptions: newOptions } : item));
     setDetailModal({ ...detailModal, isOpen: false });
   };
 
-  const totalAmount = cartItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+  const totalAmount = cartItems.reduce((sum, item) => {
+    const optionsPrice = item.selectedOptions ? item.selectedOptions.reduce((optSum, opt) => optSum + opt.price, 0) : 0;
+    return sum + ((item.price + optionsPrice) * item.quantity);
+  }, 0);
 
   // 注文確定
   const handleOrder = async () => {
@@ -264,12 +301,16 @@ export default function OrderPage() {
 
     const orderData = {
       ticketNumber: currentTicket,
-      items: cartItems.map(item => ({ 
-        productName: item.productName, 
-        quantity: item.quantity, 
-        amount: item.price * item.quantity,
-        detail: item.detail
-      })),
+      items: cartItems.map(item => {
+        const optionsPrice = item.selectedOptions ? item.selectedOptions.reduce((optSum, opt) => optSum + opt.price, 0) : 0;
+        return { 
+          productName: item.productName, 
+          quantity: item.quantity, 
+          amount: (item.price + optionsPrice) * item.quantity, 
+          detail: item.detail,
+          selectedOptions: item.selectedOptions 
+        };
+      }),
       totalAmount: totalAmount,
       status: 'active',
       paymentMethod: selectedPayment,
@@ -301,6 +342,7 @@ export default function OrderPage() {
     }
   };
 
+  // その他機能（省略なし）
   const handleReturnTicket = (num: number) => {
     showConfirm(`${num}番の整理券を\n返却（回収）済みにしますか？`, async () => {
       closeConfirm();
@@ -351,12 +393,12 @@ export default function OrderPage() {
     <div className="flex h-screen bg-gray-100 overflow-hidden font-sans relative">
       <ResultModal isOpen={resultModal.isOpen} title={resultModal.title} message={resultModal.message} type={resultModal.type} onClose={closeResult} />
       <ConfirmModal isOpen={confirmModal.isOpen} message={confirmModal.message} onConfirm={confirmModal.onConfirm} onCancel={closeConfirm} />
-      {/* 詳細設定モーダル (プリセットオプションを渡す) */}
       <DetailModal 
         isOpen={detailModal.isOpen} 
         productName={detailModal.productName} 
         currentDetail={detailModal.currentDetail}
-        options={customizationOptions} 
+        currentOptions={detailModal.currentOptions}
+        optionsList={customizationOptions} 
         onSave={saveDetail} 
         onClose={() => setDetailModal({ ...detailModal, isOpen: false })} 
       />
@@ -409,33 +451,53 @@ export default function OrderPage() {
             <div className="flex-1 overflow-y-auto p-4 bg-gray-50">
               {cartItems.length === 0 ? <p className="text-center text-gray-400 mt-10">商品を選択してください</p> : 
                 <ul className="space-y-2">
-                  {cartItems.map((item, index) => (
-                    <li key={index} className="flex flex-col bg-white p-3 rounded shadow-sm border gap-2">
-                      <div className="flex justify-between items-start">
-                        <div className="font-bold text-gray-800 text-lg">{item.productName}</div>
-                        <button onClick={() => removeFromCart(index)} className="text-red-500 hover:bg-red-100 rounded-full w-8 h-8 flex items-center justify-center">✕</button>
-                      </div>
-                      
-                      <button 
-                        onClick={() => openDetailModal(index, item)}
-                        className={`text-left text-sm px-2 py-1 rounded border border-dashed transition w-full ${
-                          item.detail ? 'bg-blue-50 border-blue-300 text-blue-800' : 'bg-gray-50 border-gray-300 text-gray-400 hover:bg-gray-100'
-                        }`}
-                      >
-                        {item.detail ? `📝 ${item.detail}` : '+ 詳細・トッピングを追加'}
-                      </button>
-
-                      <div className="flex justify-between items-end mt-1">
-                        <div className="text-sm text-gray-500 self-center">@{item.price.toLocaleString()}</div>
-                        <div className="flex items-center border border-gray-300 rounded-lg bg-gray-100 overflow-hidden shadow-sm">
-                          <button onClick={() => updateQuantity(index, item.quantity - 1)} className={`w-10 h-10 flex items-center justify-center font-bold text-lg transition ${item.quantity <= 1 ? 'text-gray-300 cursor-not-allowed' : 'text-blue-600 hover:bg-blue-100'}`} disabled={item.quantity <= 1}>−</button>
-                          <input type="number" min="1" value={item.quantity} onChange={(e) => { const val = parseInt(e.target.value); if (!isNaN(val) && val > 0) updateQuantity(index, val); }} className="w-14 h-10 text-center bg-white border-x border-gray-300 outline-none font-bold text-gray-800 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" />
-                          <button onClick={() => updateQuantity(index, item.quantity + 1)} className="w-10 h-10 flex items-center justify-center font-bold text-lg text-blue-600 hover:bg-blue-100 transition">＋</button>
+                  {cartItems.map((item, index) => {
+                    const optionsPrice = item.selectedOptions ? item.selectedOptions.reduce((s, o) => s + o.price, 0) : 0;
+                    return (
+                      <li key={index} className="flex flex-col bg-white p-3 rounded shadow-sm border gap-2">
+                        <div className="flex justify-between items-start">
+                          <div className="font-bold text-gray-800 text-lg">{item.productName}</div>
+                          <button onClick={() => removeFromCart(index)} className="text-red-500 hover:bg-red-100 rounded-full w-8 h-8 flex items-center justify-center">✕</button>
                         </div>
-                        <div className="text-xl font-bold text-blue-700 min-w-[4rem] text-right">¥{(item.price * item.quantity).toLocaleString()}</div>
-                      </div>
-                    </li>
-                  ))}
+                        
+                        <button 
+                          onClick={() => openDetailModal(index, item)}
+                          className={`text-left text-sm px-2 py-1 rounded border border-dashed transition w-full ${
+                            (item.detail || (item.selectedOptions && item.selectedOptions.length > 0))
+                              ? 'bg-blue-50 border-blue-300 text-blue-800' 
+                              : 'bg-gray-50 border-gray-300 text-gray-400 hover:bg-gray-100'
+                          }`}
+                        >
+                          <div className="flex flex-wrap gap-1 items-center">
+                            {(item.selectedOptions && item.selectedOptions.length > 0) ? (
+                              item.selectedOptions.map((opt, i) => (
+                                <span key={i} className="bg-orange-100 text-orange-800 text-xs px-1 rounded">
+                                  {opt.name}{opt.price > 0 && `(+${opt.price})`}
+                                </span>
+                              ))
+                            ) : null}
+                            {item.detail && <span className="text-xs">📝 {item.detail}</span>}
+                            {(!item.detail && (!item.selectedOptions || item.selectedOptions.length === 0)) && "+ 詳細・オプション"}
+                          </div>
+                        </button>
+
+                        <div className="flex justify-between items-end mt-1">
+                          <div className="text-sm text-gray-500 self-center">
+                            @{item.price.toLocaleString()}
+                            {optionsPrice > 0 && <span className="text-orange-600 text-xs ml-1">(OP +{optionsPrice})</span>}
+                          </div>
+                          <div className="flex items-center border border-gray-300 rounded-lg bg-gray-100 overflow-hidden shadow-sm">
+                            <button onClick={() => updateQuantity(index, item.quantity - 1)} className={`w-10 h-10 flex items-center justify-center font-bold text-lg transition ${item.quantity <= 1 ? 'text-gray-300 cursor-not-allowed' : 'text-blue-600 hover:bg-blue-100'}`} disabled={item.quantity <= 1}>−</button>
+                            <input type="number" min="1" value={item.quantity} onChange={(e) => { const val = parseInt(e.target.value); if (!isNaN(val) && val > 0) updateQuantity(index, val); }} className="w-14 h-10 text-center bg-white border-x border-gray-300 outline-none font-bold text-gray-800 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" />
+                            <button onClick={() => updateQuantity(index, item.quantity + 1)} className="w-10 h-10 flex items-center justify-center font-bold text-lg text-blue-600 hover:bg-blue-100 transition">＋</button>
+                          </div>
+                          <div className="text-xl font-bold text-blue-700 min-w-[4rem] text-right">
+                            ¥{((item.price + optionsPrice) * item.quantity).toLocaleString()}
+                          </div>
+                        </div>
+                      </li>
+                    );
+                  })}
                 </ul>
               }
             </div>

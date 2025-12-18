@@ -3,14 +3,24 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 
+type CustomOption = {
+  name: string;
+  price: number;
+};
+
 export default function SettingsPage() {
   const router = useRouter();
   const [maxTicket, setMaxTicket] = useState<number | string>("");
   const [paymentMethods, setPaymentMethods] = useState<string[]>([]);
-  const [customizations, setCustomizations] = useState<string[]>([]); // ★追加
+  
+  // ★変更: カスタマイズはオブジェクトの配列で管理
+  const [customizations, setCustomizations] = useState<CustomOption[]>([]);
   
   const [newMethod, setNewMethod] = useState("");
-  const [newCustomization, setNewCustomization] = useState(""); // ★追加
+  
+  // ★変更: 新規オプション入力用
+  const [newCustomName, setNewCustomName] = useState("");
+  const [newCustomPrice, setNewCustomPrice] = useState("");
 
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
@@ -23,16 +33,13 @@ export default function SettingsPage() {
           const data = await res.json();
           setMaxTicket(data.maxTicketNumber);
           setPaymentMethods(data.paymentMethods || []);
-          setCustomizations(data.customizations || []); // ★追加
+          setCustomizations(data.customizations || []);
         }
-      } catch (error) {
-        console.error("設定取得エラー", error);
-      }
+      } catch (error) { console.error("設定取得エラー", error); }
     };
     fetchSettings();
   }, []);
 
-  // 決済方法の操作
   const addPaymentMethod = () => {
     if (newMethod && !paymentMethods.includes(newMethod)) {
       setPaymentMethods([...paymentMethods, newMethod]);
@@ -43,21 +50,22 @@ export default function SettingsPage() {
     setPaymentMethods(paymentMethods.filter(m => m !== val));
   };
 
-  // ★追加: 別注オプションの操作
+  // ★変更: オプション追加ロジック
   const addCustomization = () => {
-    if (newCustomization && !customizations.includes(newCustomization)) {
-      setCustomizations([...customizations, newCustomization]);
-      setNewCustomization("");
+    if (newCustomName) {
+      const price = parseInt(newCustomPrice) || 0;
+      setCustomizations([...customizations, { name: newCustomName, price }]);
+      setNewCustomName("");
+      setNewCustomPrice("");
     }
   };
-  const removeCustomization = (val: string) => {
-    setCustomizations(customizations.filter(c => c !== val));
+  const removeCustomization = (index: number) => {
+    setCustomizations(customizations.filter((_, i) => i !== index));
   };
 
   const handleSave = async () => {
     setLoading(true);
     setMessage("");
-
     try {
       const res = await fetch('/api/settings', {
         method: 'POST',
@@ -65,20 +73,13 @@ export default function SettingsPage() {
         body: JSON.stringify({ 
           maxTicketNumber: maxTicket,
           paymentMethods: paymentMethods,
-          customizations: customizations // ★送信
+          customizations: customizations
         }),
       });
-
-      if (res.ok) {
-        setMessage("設定を保存しました！");
-      } else {
-        setMessage("保存に失敗しました");
-      }
-    } catch (error) {
-      setMessage("通信エラーが発生しました");
-    } finally {
-      setLoading(false);
-    }
+      if (res.ok) setMessage("設定を保存しました！");
+      else setMessage("保存に失敗しました");
+    } catch (error) { setMessage("通信エラーが発生しました"); } 
+    finally { setLoading(false); }
   };
 
   return (
@@ -90,34 +91,17 @@ export default function SettingsPage() {
         <div className="mb-8">
           <label className="block text-gray-700 font-bold mb-2">整理券番号の最大値</label>
           <div className="flex items-center gap-2">
-            <input
-              type="number"
-              min="1"
-              value={maxTicket}
-              onChange={(e) => setMaxTicket(Number(e.target.value))}
-              className="w-full border p-3 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-xl font-bold"
-            />
+            <input type="number" min="1" value={maxTicket} onChange={(e) => setMaxTicket(Number(e.target.value))} className="w-full border p-3 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none text-xl font-bold" />
             <span className="text-gray-600 font-bold">番まで</span>
           </div>
         </div>
 
         {/* 決済方法設定 */}
         <div className="mb-8">
-          <label className="block text-gray-700 font-bold mb-2">決済方法の管理</label>
+          <label className="block text-gray-700 font-bold mb-2">決済方法</label>
           <div className="flex gap-2 mb-3">
-            <input
-              type="text"
-              value={newMethod}
-              onChange={(e) => setNewMethod(e.target.value)}
-              placeholder="例: d払い"
-              className="flex-1 border p-2 rounded-lg outline-none"
-            />
-            <button 
-              onClick={addPaymentMethod}
-              className="bg-green-600 text-white px-4 rounded-lg font-bold hover:bg-green-700"
-            >
-              追加
-            </button>
+            <input type="text" value={newMethod} onChange={(e) => setNewMethod(e.target.value)} placeholder="例: d払い" className="flex-1 border p-2 rounded-lg outline-none" />
+            <button onClick={addPaymentMethod} className="bg-green-600 text-white px-4 rounded-lg font-bold hover:bg-green-700">追加</button>
           </div>
           <div className="flex flex-wrap gap-2">
             {paymentMethods.map((method) => (
@@ -129,29 +113,36 @@ export default function SettingsPage() {
           </div>
         </div>
 
-        {/* ★追加: 別注オプション設定 */}
+        {/* ★変更: 別注オプション設定（価格付き） */}
         <div className="mb-8">
-          <label className="block text-gray-700 font-bold mb-2">別注オプション (詳細設定) の定型文</label>
+          <label className="block text-gray-700 font-bold mb-2">別注オプション (詳細設定)</label>
           <div className="flex gap-2 mb-3">
             <input
               type="text"
-              value={newCustomization}
-              onChange={(e) => setNewCustomization(e.target.value)}
-              placeholder="例: 氷少なめ、ネギ抜き"
+              value={newCustomName}
+              onChange={(e) => setNewCustomName(e.target.value)}
+              placeholder="項目名 (例: 大盛り)"
+              className="flex-[2] border p-2 rounded-lg outline-none"
+            />
+            <input
+              type="number"
+              value={newCustomPrice}
+              onChange={(e) => setNewCustomPrice(e.target.value)}
+              placeholder="価格 (0可)"
               className="flex-1 border p-2 rounded-lg outline-none"
             />
-            <button 
-              onClick={addCustomization}
-              className="bg-orange-500 text-white px-4 rounded-lg font-bold hover:bg-orange-600"
-            >
-              追加
-            </button>
+            <button onClick={addCustomization} className="bg-orange-500 text-white px-4 rounded-lg font-bold hover:bg-orange-600">追加</button>
           </div>
-          <div className="flex flex-wrap gap-2">
-            {customizations.map((item) => (
-              <div key={item} className="bg-orange-50 px-3 py-1 rounded-full flex items-center gap-2 border border-orange-200 text-orange-800">
-                <span>{item}</span>
-                <button onClick={() => removeCustomization(item)} className="text-red-500 hover:text-red-700 font-bold px-1">×</button>
+          <div className="space-y-2">
+            {customizations.map((item, index) => (
+              <div key={index} className="flex justify-between items-center bg-orange-50 px-3 py-2 rounded-lg border border-orange-200">
+                <div className="flex items-center gap-2">
+                  <span className="font-bold text-orange-900">{item.name}</span>
+                  <span className="text-xs bg-white px-2 py-0.5 rounded border border-orange-300 text-orange-600 font-mono">
+                    +{item.price}円
+                  </span>
+                </div>
+                <button onClick={() => removeCustomization(index)} className="text-red-500 hover:text-red-700 font-bold px-2">×</button>
               </div>
             ))}
           </div>
@@ -164,22 +155,8 @@ export default function SettingsPage() {
         )}
 
         <div className="flex flex-col gap-3">
-          <button
-            onClick={handleSave}
-            disabled={loading}
-            className={`w-full py-3 rounded-lg font-bold text-white transition ${
-              loading ? 'bg-gray-400' : 'bg-blue-600 hover:bg-blue-700'
-            }`}
-          >
-            {loading ? "保存中..." : "設定を保存する"}
-          </button>
-
-          <button
-            onClick={() => router.push('/order')}
-            className="w-full py-3 rounded-lg font-bold text-gray-600 bg-gray-200 hover:bg-gray-300 transition"
-          >
-            注文画面に戻る
-          </button>
+          <button onClick={handleSave} disabled={loading} className={`w-full py-3 rounded-lg font-bold text-white transition ${loading ? 'bg-gray-400' : 'bg-blue-600 hover:bg-blue-700'}`}>{loading ? "保存中..." : "設定を保存する"}</button>
+          <button onClick={() => router.push('/order')} className="w-full py-3 rounded-lg font-bold text-gray-600 bg-gray-200 hover:bg-gray-300 transition">注文画面に戻る</button>
         </div>
       </div>
     </div>
