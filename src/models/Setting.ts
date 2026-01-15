@@ -15,7 +15,6 @@ const SettingSchema = new Schema({
     type: [String],
     default: ['現金', 'クレジットカード', 'PayPay', '交通系IC'],
   },
-  // ★変更: 名前と価格を持つオブジェクトの配列にする
   customizations: {
     type: [{
       name: String,
@@ -27,6 +26,11 @@ const SettingSchema = new Schema({
       { name: '大盛り', price: 100 },
       { name: 'テイクアウト', price: 0 }
     ],
+  },
+  // ★追加: 紛失した整理券番号を保存する配列
+  lostTickets: {
+    type: [Number],
+    default: []
   }
 }, { timestamps: true });
 

@@ -3,7 +3,6 @@
 import { useState, useEffect } from 'react';
 import { BaseModal } from '@/components/BaseModal';
 
-// 必要な型定義
 export type CustomOption = {
   name: string;
   price: number;
@@ -53,12 +52,11 @@ export const ConfirmModal = ({ isOpen, message, onConfirm, onCancel }: any) => {
   );
 };
 
-// --- 詳細設定モーダル (修正版) ---
+// --- 詳細設定モーダル ---
 export const DetailModal = ({ isOpen, productName, currentDetail, currentOptions, optionsList, onSave, onClose }: any) => {
   const [noteVal, setNoteVal] = useState<string>("");
   const [selectedOpts, setSelectedOpts] = useState<CustomOption[]>([]);
   
-  // モーダルが開くたびに初期値をセット
   useEffect(() => { 
     if (isOpen) {
       setNoteVal(currentDetail || ""); 
@@ -79,18 +77,14 @@ export const DetailModal = ({ isOpen, productName, currentDetail, currentOptions
     <BaseModal isOpen={isOpen} onClose={onClose}>
       <h3 className="text-lg font-bold text-gray-800 mb-2">詳細設定: {productName}</h3>
       
-      {/* オプション選択エリア */}
       <div className="mb-4">
         <p className="text-xs text-gray-500 mb-2">オプションを選択 (タップで切替)</p>
         <div className="flex flex-wrap gap-2">
           {optionsList && optionsList.map((opt: CustomOption, index: number) => {
-            // 名前が空の場合は表示しない
             if (!opt.name) return null;
-            
             const isSelected = selectedOpts.some(o => o.name === opt.name);
             return (
               <button
-                // ★修正: keyにindexを含めて一意にする (エラー回避)
                 key={`${opt.name}-${index}`} 
                 onClick={() => toggleOption(opt)}
                 className={`px-3 py-2 rounded-lg text-sm border flex items-center gap-1 transition ${
@@ -100,7 +94,6 @@ export const DetailModal = ({ isOpen, productName, currentDetail, currentOptions
                 }`}
               >
                 <span>{opt.name}</span>
-                {/* 価格表示 (マイナスの場合は赤字) */}
                 {opt.price !== 0 && (
                   <span className={`text-xs ${
                     isSelected ? 'text-white opacity-90' : (opt.price < 0 ? 'text-red-500 font-bold' : 'opacity-80')
@@ -124,6 +117,64 @@ export const DetailModal = ({ isOpen, productName, currentDetail, currentOptions
       <div className="flex gap-3">
         <button onClick={onClose} className="flex-1 py-2 bg-gray-200 text-gray-700 rounded-lg font-bold hover:bg-gray-300">キャンセル</button>
         <button onClick={() => onSave(noteVal, selectedOpts)} className="flex-1 py-2 bg-blue-600 text-white rounded-lg font-bold hover:bg-blue-700">保存</button>
+      </div>
+    </BaseModal>
+  );
+};
+
+// ★追加: 決済方法選択モーダル
+export const PaymentModal = ({ isOpen, paymentMethods, totalAmount, onConfirm, onCancel }: any) => {
+  const [selected, setSelected] = useState("");
+
+  // モーダルが開くたびに選択状態をリセット
+  useEffect(() => {
+    if (isOpen) setSelected("");
+  }, [isOpen]);
+
+  const handleConfirm = () => {
+    if (!selected) return;
+    onConfirm(selected);
+  };
+
+  return (
+    <BaseModal isOpen={isOpen} onClose={onCancel} closeOnOverlayClick={false}> {/* 枠外クリックで閉じない */}
+      <h3 className="text-xl font-bold text-gray-800 text-center mb-2">お支払い方法の選択</h3>
+      <p className="text-center text-3xl font-black text-blue-600 mb-6">¥{totalAmount.toLocaleString()}</p>
+      
+      <div className="grid grid-cols-2 gap-3 mb-6">
+        {paymentMethods.map((method: string) => (
+          <button
+            key={method}
+            onClick={() => setSelected(method)}
+            className={`py-4 px-2 rounded-xl font-bold text-lg transition shadow-sm border-2 ${
+              selected === method
+                ? 'bg-blue-600 text-white border-blue-600 ring-2 ring-blue-300'
+                : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-50'
+            }`}
+          >
+            {method}
+          </button>
+        ))}
+      </div>
+
+      <div className="flex gap-3">
+        <button
+          onClick={onCancel}
+          className="flex-1 py-3 bg-gray-200 text-gray-700 rounded-lg font-bold hover:bg-gray-300 transition"
+        >
+          戻る
+        </button>
+        <button
+          onClick={handleConfirm}
+          disabled={!selected}
+          className={`flex-1 py-3 text-white rounded-lg font-bold transition shadow-lg ${
+            selected 
+              ? 'bg-green-600 hover:bg-green-700' 
+              : 'bg-gray-400 cursor-not-allowed'
+          }`}
+        >
+          確定する
+        </button>
       </div>
     </BaseModal>
   );

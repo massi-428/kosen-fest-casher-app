@@ -18,7 +18,8 @@ export async function GET() {
         customizations: [
           { name: '氷少なめ', price: 0 },
           { name: '大盛り', price: 100 }
-        ]
+        ],
+        lostTickets: [] // 初期値
       });
     }
 
@@ -35,10 +36,11 @@ export async function POST(request: Request) {
     
     const updateData: any = {};
 
-    if (body.maxTicketNumber) updateData.maxTicketNumber = Number(body.maxTicketNumber);
+    if (body.maxTicketNumber !== undefined) updateData.maxTicketNumber = Number(body.maxTicketNumber);
     if (body.paymentMethods) updateData.paymentMethods = body.paymentMethods;
-    // ★変更: オブジェクト配列として保存
     if (body.customizations) updateData.customizations = body.customizations;
+    // ★追加: 紛失番号リストの更新
+    if (body.lostTickets !== undefined) updateData.lostTickets = body.lostTickets;
 
     const updated = await Setting.findOneAndUpdate(
       { key: 'app_config' },
