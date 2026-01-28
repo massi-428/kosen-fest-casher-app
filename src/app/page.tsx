@@ -1,27 +1,45 @@
-"use client"; // 【重要1】onClickを使う場合は必ず先頭にこれを書く
+"use client";
 
-import Image from "next/image";
-import { useRouter } from 'next/navigation'; // Next.jsのナビゲーション機能を使用するためにuseRouterをインポート
-
+import { useRouter } from 'next/navigation';
+import { useState } from 'react';
+import Image from 'next/image';
 
 export default function Home() {
-  // useRouterフックを初期化します
   const router = useRouter();
+  // 画像の読み込みエラーを検知する状態管理
+  const [imageError, setImageError] = useState(false);
 
-  // ログインページへ遷移する関数
   const goToLogin = () => {
-    // router.push()を使って、指定したパス（/login）に遷移します
     router.push('/login'); 
   };
   
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen bg-gray-50 p-4">
-      <div className="text-5xl font-extrabold text-blue-600 mb-8 tracking-wider">ROOTINE</div>
+    <div className="flex flex-col items-center justify-center min-h-screen bg-gray-50 p-4 font-sans">
       
-      <p className="text-gray-600 mb-6">「ログインページへ」ボタンを押すと、ログインページに移動します。</p>
+      {/* 画像エリア: エラーがない場合のみ表示 */}
+      {!imageError && (
+        <div className="mb-4">
+          <Image 
+            src="/image/ROOTINE_Logo_color.png" 
+            alt="ROOTINE Logo"
+            width={300}
+            height={100}
+            priority
+            onError={() => setImageError(true)} // 読み込めなかったら非表示にする
+            style={{ maxWidth: '100%', height: 'auto' }}
+          />
+        </div>
+      )}
+
+      {/* タイトルテキスト */}
+      <div className="text-8xl font-black text-gray-800 px-3 py-2 mb-8 tracking-tighter">
+        ROOTINE
+      </div>
+      
+      <p className="text-gray-600 mb-6 font-bold">「ログインページへ」ボタンを押すと、ログインページに移動します。</p>
 
       <button 
-        className="bg-blue-500 text-white px-8 py-3 rounded-xl shadow-lg hover:bg-blue-600 transition duration-300 transform hover:scale-105 font-semibold"
+        className="bg-[#f3b928] text-gray-900 px-10 py-4 rounded-2xl shadow-xl hover:bg-[#d6a11b] transition duration-300 transform hover:scale-105 font-bold text-lg"
         onClick={goToLogin} 
       >
         ログインページへ

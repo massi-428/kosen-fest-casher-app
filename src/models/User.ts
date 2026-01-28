@@ -1,20 +1,23 @@
 import mongoose, { Schema, model, models } from 'mongoose';
 
 const UserSchema = new Schema({
-    // フィールド名をDBの実際のキー 'userId' に修正
-    userId: { 
-        type: String,
-        required: [true, 'IDは必須です'],
-        unique: true,
-    },
-    // パスワードはそのまま
-    password: {
+  userId: {
     type: String,
-    required: [true, 'パスワードは必須です'],
-    },
+    required: true,
+    unique: true,
+  },
+  password: {
+    type: String,
+    required: true,
+  },
 }, { timestamps: true });
 
-// コレクション名 'accounts' は引き続き必要です
+// 開発環境でのホットリロード対策
+if (process.env.NODE_ENV !== 'production') {
+  delete models.User;
+}
+
+// ★修正: コレクション名を 'accounts' に戻しました
 const User = models.User || model('User', UserSchema, 'accounts');
 
 export default User;

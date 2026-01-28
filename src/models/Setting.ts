@@ -1,10 +1,11 @@
 import mongoose, { Schema, model, models } from 'mongoose';
 
 const SettingSchema = new Schema({
+  // ★修正: 共通設定にするため ownerId は必須でなくす
+  ownerId: { type: String, required: false, index: true },
   key: {
     type: String,
     default: 'app_config',
-    unique: true,
   },
   maxTicketNumber: {
     type: Number,
@@ -27,7 +28,6 @@ const SettingSchema = new Schema({
       { name: 'テイクアウト', price: 0 }
     ],
   },
-  // ★追加: 紛失した整理券番号を保存する配列
   lostTickets: {
     type: [Number],
     default: []
@@ -38,6 +38,7 @@ if (process.env.NODE_ENV !== 'production') {
   delete models.Setting;
 }
 
-const Setting = models.Setting || model('Setting', SettingSchema, 'settings');
+// コレクション名を 'global_settings' に変更して心機一転させます
+const Setting = models.Setting || model('Setting', SettingSchema, 'global_settings');
 
 export default Setting;

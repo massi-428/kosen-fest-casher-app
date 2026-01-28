@@ -1,7 +1,10 @@
 "use client";
 
 import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+
+const useRouter = () => ({
+  push: (path: string) => { if (typeof window !== 'undefined') window.location.href = path; },
+});
 
 export default function Login() {
   const router = useRouter();
@@ -12,70 +15,43 @@ export default function Login() {
     e.preventDefault();
     setError("");
     setLoading(true);
-
     const formData = new FormData(e.currentTarget);
-    const id = formData.get('id');
-    const password = formData.get('password');
+    const id = formData.get('id') as string;
+    const password = formData.get('password') as string;
 
     try {
-      const res = await fetch('/api/login', {
+      const baseUrl = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000';
+      const res = await fetch(new URL('/api/login', baseUrl).toString(), {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id, password }),
       });
-
       const data = await res.json();
-
       if (res.ok) {
-        // ★★★ 変更点: ログイン成功時に /order へ遷移します ★★★
-        router.push('/order'); 
+        if (typeof window !== 'undefined') localStorage.setItem('currentUserId', id);
+        router.push('/order');
       } else {
-        setError(data.message || "ログインエラー");
+        setError(data.message || "ログイン失敗");
       }
-    } catch (err) {
-      setError("通信エラーが発生しました");
-    } finally {
-      setLoading(false);
-    }
+    } catch (err) { setError("通信エラー"); } 
+    finally { setLoading(false); }
   };
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen bg-gray-100 p-4">
-      <div className="text-center mb-8">
-        <div className="text-5xl font-extrabold text-blue-600 tracking-wider">ROOTINE</div>
-        <div className="text-2xl font-semibold text-gray-700 mt-2">ログインページ</div>
-      </div>
-
-      <form onSubmit={handleSubmit} className="bg-white p-8 rounded-xl shadow-2xl w-full max-w-sm">
-        <div className="space-y-4">
-          {error && (
-            <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-2 rounded text-sm">
-              {error}
-            </div>
-          )}
-          <div>
-            <input 
-              type="text" name="id" placeholder="IDを入力してください" required
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500"
-            />
-          </div>
-          <div>
-            <input 
-              type="password" name="password" placeholder="パスワードを入力してください" required
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500"
-            />
-          </div>
-        </div>
+    <div className="flex flex-col items-center justify-center min-h-screen bg-gray-100 p-4 font-sans text-gray-900">
+      <h1 className="text-5xl font-extrabold text-[#f3b928] mb-8 drop-shadow-sm tracking-wider">ROOTINE</h1>
+      <form onSubmit={handleSubmit} className="bg-white p-8 rounded-xl shadow-2xl w-full max-w-sm space-y-4">
+        {error && <div className="bg-red-100 text-red-700 px-4 py-2 rounded text-sm">{error}</div>}
+        <div><label className="block text-sm font-bold mb-1">ID</label><input type="text" name="id" required className="w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-[#f3b928] outline-none transition" /></div>
+        <div><label className="block text-sm font-bold mb-1">パスワード</label><input type="password" name="password" required className="w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-[#f3b928] outline-none transition" /></div>
         <button 
-          type="submit" disabled={loading}
-          className={`mt-6 w-full text-white py-2 rounded-lg font-bold shadow-md transition duration-200 ${
-            loading ? 'bg-gray-400' : 'bg-blue-600 hover:bg-blue-700'
-          }`}
+          type="submit" 
+          disabled={loading} 
+          className={`mt-4 w-full py-3 bg-[#f3b928] text-gray-900 rounded-lg font-black hover:bg-[#d6a11b] transition shadow-md ${loading ? 'opacity-50 cursor-not-allowed' : ''}`}
         >
-          {loading ? 'ログイン中...' : 'ログイン'}
+          {loading ? '確認中...' : 'ログイン'}
         </button>
+        <a href="/signup" className="block text-center text-sm text-[#f3b928] hover:text-[#d6a11b] hover:underline font-bold mt-4">新規登録はこちら</a>
       </form>
     </div>
   );
