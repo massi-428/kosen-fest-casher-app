@@ -1,16 +1,15 @@
 import { NextResponse } from 'next/server';
 import connectToDatabase from '@/lib/db';
 import User from '@/models/User';
+import { getSessionUserId, hashPassword, unauthorizedResponse, verifyPassword } from '@/lib/auth';
 
 export async function POST(request: Request) {
   try {
     await connectToDatabase();
     
-    // ヘッダーからユーザーIDを取得（認証）
-    const userId = request.headers.get('x-user-id');
-    if (!userId) {
-      return NextResponse.json({ message: '認証エラー: ログインしてください' }, { status: 401 });
-    }
+    // CookieからユーザーIDを取得（認証）
+    const userId = getSessionUserId(request);
+    if (!userId) return unauthorizedResponse();
 
     const { currentPassword, newPassword } = await request.json();
 
@@ -24,13 +23,14 @@ export async function POST(request: Request) {
       return NextResponse.json({ message: 'ユーザーが見つかりません' }, { status: 404 });
     }
 
-    // 現在のパスワードを確認（平文比較）
-    if (user.password !== currentPassword) {
+    // 現在のパスワードを確認
+    const passwordMatches = await verifyPassword(currentPassword, user.password);
+    if (!passwordMatches) {
       return NextResponse.json({ message: '現在のパスワードが間違っています' }, { status: 400 });
     }
 
     // パスワードを更新
-    user.password = newPassword;
+    user.password = await hashPassword(newPassword);
     await user.save();
 
     return NextResponse.json({ message: 'パスワードを変更しました' }, { status: 200 });

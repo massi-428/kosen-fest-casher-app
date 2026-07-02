@@ -1,0 +1,76 @@
+{
+  "settings": [
+    {
+      "_id": "693a4f8d434884a9081ebb74",
+      "key": "app_config",
+      "maxTicketNumber": 3,
+      "createdAt": "2025-12-11T04:58:53.091Z",
+      "updatedAt": "2025-12-18T05:05:36.990Z",
+      "__v": 0,
+      "paymentMethods": [
+        "現金",
+        "クレジットカード",
+        "PayPay",
+        "交通系IC"
+      ],
+      "customizations": [
+        {
+          "name": "大盛",
+          "price": 100,
+          "_id": "693bace040455eae1407a59e"
+        },
+        {
+          "name": "肉",
+          "price": 100,
+          "_id": "6943882bccb978d91d87744b"
+        },
+        {
+          "name": "端なし",
+          "price": -100,
+          "_id": "69438ba0ccb978d91d877e3e"
+        }
+      ]
+    }
+  ],
+  "settings_v3": [
+    {
+      "_id": "6a45c394efa684e8ceb5d191",
+      "ownerId": "admin",
+      "key": "app_config",
+      "maxTicketNumber": 30,
+      "paymentMethods": [
+        "現金",
+        "クレジットカード",
+        "PayPay",
+        "交通系IC"
+      ],
+      "customizations": [
+        {
+          "name": "氷少なめ",
+          "price": 0,
+          "_id": "6a45c394efa684e8ceb5d192"
+        },
+        {
+          "name": "ネギ抜き",
+          "price": 0,
+          "_id": "6a45c394efa684e8ceb5d193"
+        },
+        {
+          "name": "大盛り",
+          "price": 100,
+          "_id": "6a45c394efa684e8ceb5d194"
+        },
+        {
+          "name": "テイクアウト",
+          "price": 0,
+          "_id": "6a45c394efa684e8ceb5d195"
+        }
+      ],
+      "lostTickets": [],
+      "cancelPassword": "0000",
+      "createdAt": "2026-07-02T01:49:08.464Z",
+      "updatedAt": "2026-07-02T01:49:08.464Z",
+      "__v": 0
+    }
+  ]
+}

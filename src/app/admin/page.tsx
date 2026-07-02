@@ -11,7 +11,6 @@ const apiFetch = async (url: string, options: RequestInit = {}) => {
     const baseUrl = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000';
     const absoluteUrl = url.startsWith('http') ? url : new URL(url, baseUrl).toString();
     const headers = new Headers(options.headers || {});
-    if (typeof window !== 'undefined') { const userId = localStorage.getItem('currentUserId'); if (userId) headers.set('x-user-id', userId); }
     return await fetch(absoluteUrl, { ...options, headers });
   } catch (e) { return { ok: false, status: 500, json: async () => ({ message: "通信エラー" }) } as Response; }
 };
@@ -259,7 +258,8 @@ export default function AdminPage() {
           </button>
           
           <button 
-            onClick={() => {
+            onClick={async () => {
+              await fetch('/api/logout', { method: 'POST' }).catch(() => {});
               localStorage.removeItem('currentUserId');
               router.push('/login');
             }} 

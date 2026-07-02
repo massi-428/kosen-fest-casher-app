@@ -1,14 +1,15 @@
 import { NextResponse } from 'next/server';
 import connectToDatabase from '@/lib/db';
 import Order from '@/models/Order';
+import { getSessionUserId, unauthorizedResponse } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(request: Request) {
   try {
     await connectToDatabase();
-    const userId = request.headers.get('x-user-id');
-    if (!userId) return NextResponse.json({ message: '認証エラー' }, { status: 401 });
+    const userId = getSessionUserId(request);
+    if (!userId) return unauthorizedResponse();
 
     const { searchParams } = new URL(request.url);
     const dateParam = searchParams.get('date');

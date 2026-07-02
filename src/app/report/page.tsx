@@ -18,10 +18,6 @@ const apiFetch = async (url: string, options: RequestInit = {}) => {
     const absoluteUrl = url.startsWith('http') ? url : new URL(url, baseUrl).toString();
     
     const headers = new Headers(options.headers || {});
-    if (typeof window !== 'undefined') {
-      const userId = localStorage.getItem('currentUserId');
-      if (userId) headers.set('x-user-id', userId);
-    }
     
     return await fetch(absoluteUrl, { ...options, headers });
   } catch (e) {

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import connectToDatabase from '@/lib/db';
 import User from '@/models/User';
+import { hashPassword } from '@/lib/auth';
 
 export async function POST(request: Request) {
   try {
@@ -22,7 +23,8 @@ export async function POST(request: Request) {
     }
 
     // ユーザー作成
-    const newUser = await User.create({ userId: id, password });
+    const hashedPassword = await hashPassword(password);
+    const newUser = await User.create({ userId: id, password: hashedPassword });
     console.log("User created:", newUser);
 
     return NextResponse.json({ message: 'アカウントを作成しました' }, { status: 201 });

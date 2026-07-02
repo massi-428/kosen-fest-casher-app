@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { ConfirmModal as SharedConfirmModal, ResultModal as SharedResultModal } from '@/components/order/OrderModals';
 
 // --- ユーティリティ ---
 const useRouter = () => ({ push: (path: string) => { if (typeof window !== 'undefined') window.location.href = path; } });
@@ -10,7 +11,6 @@ const apiFetch = async (url: string, options: RequestInit = {}) => {
     const baseUrl = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000';
     const absoluteUrl = url.startsWith('http') ? url : new URL(url, baseUrl).toString();
     const headers = new Headers(options.headers || {});
-    if (typeof window !== 'undefined') { const userId = localStorage.getItem('currentUserId'); if (userId) headers.set('x-user-id', userId); }
     return await fetch(absoluteUrl, { ...options, headers });
   } catch (e) { return { ok: false, status: 500, json: async () => ({ message: "通信エラー" }) } as Response; }
 };
@@ -19,64 +19,6 @@ const apiFetch = async (url: string, options: RequestInit = {}) => {
 type CustomOption = { name: string; price: number; };
 type OrderItem = { productName: string; quantity: number; amount: number; detail?: string; selectedOptions?: CustomOption[]; };
 type Order = { _id: string; ticketNumber: string; items: OrderItem[]; totalAmount: number; status: 'active' | 'completed' | 'cancelled'; paymentMethod?: string; note?: string; createdAt: string; };
-
-
-// --- ベースモーダルコンポーネント ---
-const BaseModal = ({ isOpen, onClose, children, closeOnOverlayClick = true }: { isOpen: boolean; onClose: () => void; children: React.ReactNode; closeOnOverlayClick?: boolean }) => {
-  useEffect(() => {
-    const handleEsc = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && closeOnOverlayClick) onClose();
-    };
-    if (isOpen) window.addEventListener('keydown', handleEsc);
-    return () => window.removeEventListener('keydown', handleEsc);
-  }, [isOpen, onClose, closeOnOverlayClick]);
-
-  if (!isOpen) return null;
-
-  return (
-    <div 
-      className="fixed inset-0 z-[100] flex items-center justify-center bg-black bg-opacity-50 transition-opacity p-4 font-sans"
-      onClick={() => closeOnOverlayClick && onClose()} 
-    >
-      <div 
-        className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-md max-h-[90vh] overflow-y-auto transform transition-all animate-bounceIn"
-        onClick={(e) => e.stopPropagation()} 
-      >
-        {children}
-      </div>
-    </div>
-  );
-};
-
-// --- モーダル一覧 ---
-const ResultModal = ({ isOpen, title, message, type, onClose }: any) => (
-  <BaseModal isOpen={isOpen} onClose={onClose}>
-    <div className={`text-center mb-4 text-4xl ${type === 'success' ? 'text-green-500' : 'text-red-500'}`}>
-      {type === 'success' ? '✓' : '!'}
-    </div>
-    <h3 className="text-xl font-bold text-gray-800 text-center mb-2">{title}</h3>
-    <p className="text-gray-600 text-center mb-6 whitespace-pre-wrap">{message}</p>
-    <button onClick={onClose} className="w-full py-4 bg-[#f3b928] text-gray-900 rounded-xl font-bold hover:bg-[#d6a11b] transition shadow-lg">
-      閉じる
-    </button>
-  </BaseModal>
-);
-
-const ConfirmModal = ({ isOpen, message, onConfirm, onCancel }: any) => (
-  <BaseModal isOpen={isOpen} onClose={onCancel}>
-    <div className="text-center mb-4 text-4xl text-yellow-500">?</div>
-    <h3 className="text-xl font-bold text-gray-800 text-center mb-4">確認</h3>
-    <p className="text-gray-600 text-center mb-6 whitespace-pre-wrap font-medium">{message}</p>
-    <div className="flex gap-3 mt-6">
-      <button onClick={onCancel} className="flex-1 py-3 bg-gray-100 text-gray-700 rounded-xl font-bold hover:bg-gray-200 transition">
-        キャンセル
-      </button>
-      <button onClick={onConfirm} className="flex-1 py-3 bg-[#f3b928] text-gray-900 rounded-xl font-bold hover:bg-[#d6a11b] transition shadow-md">
-        実行する
-      </button>
-    </div>
-  </BaseModal>
-);
 
 
 // --- メインコンポーネント ---
@@ -162,8 +104,8 @@ export default function HistoryPage() {
     <div className="min-h-screen bg-gray-100 p-6 font-sans text-gray-900">
       
       {/* モーダル */}
-      <ResultModal isOpen={modals.result} {...modalData} onClose={() => toggleModal('result', false)} />
-      <ConfirmModal isOpen={modals.confirm} {...modalData} onCancel={() => toggleModal('confirm', false)} />
+      <SharedResultModal isOpen={modals.result} {...modalData} onClose={() => toggleModal('result', false)} />
+      <SharedConfirmModal isOpen={modals.confirm} {...modalData} onCancel={() => toggleModal('confirm', false)} />
 
       <div className="flex justify-between items-center mb-6 bg-white p-4 rounded-xl shadow-md">
         <h1 className="text-3xl font-bold text-gray-800">注文履歴と管理</h1>

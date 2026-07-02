@@ -1,14 +1,15 @@
 import { NextResponse } from 'next/server';
 import connectToDatabase from '@/lib/db';
 import Order from '@/models/Order';
+import { getSessionUserId, unauthorizedResponse } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(request: Request) {
   try {
     await connectToDatabase();
-    const userId = request.headers.get('x-user-id');
-    if (!userId) return NextResponse.json({ message: '認証エラー' }, { status: 401 });
+    const userId = getSessionUserId(request);
+    if (!userId) return unauthorizedResponse();
     const orders = await Order.find({ ownerId: userId }).sort({ createdAt: -1 });
     return NextResponse.json(orders, { status: 200 });
   } catch (error) { return NextResponse.json({ message: 'エラー' }, { status: 500 }); }
@@ -17,8 +18,8 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     await connectToDatabase();
-    const userId = request.headers.get('x-user-id');
-    if (!userId) return NextResponse.json({ message: '認証エラー' }, { status: 401 });
+    const userId = getSessionUserId(request);
+    if (!userId) return unauthorizedResponse();
     const body = await request.json();
     const newOrder = await Order.create({
       ownerId: userId,

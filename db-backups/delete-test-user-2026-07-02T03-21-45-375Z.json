@@ -1,0 +1,24 @@
+{
+  "accounts": [
+    {
+      "_id": "697b0d31f41d0b3aaa90d352",
+      "userId": "test",
+      "createdAt": "2026-01-29T07:33:05.797Z",
+      "updatedAt": "2026-01-29T07:33:05.797Z",
+      "__v": 0
+    }
+  ],
+  "products": [
+    {
+      "_id": "697b0daef41d0b3aaa90d3c3",
+      "ownerId": "test",
+      "name": "クレープ",
+      "price": 300,
+      "createdAt": "2026-01-29T07:35:10.348Z",
+      "updatedAt": "2026-01-29T07:35:10.348Z",
+      "__v": 0
+    }
+  ],
+  "orders": [],
+  "settings": []
+}

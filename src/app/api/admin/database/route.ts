@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import connectToDatabase from '@/lib/db';
 import mongoose from 'mongoose';
+import { getSessionUserId } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -8,7 +9,7 @@ export async function GET(request: Request) {
   try {
     await connectToDatabase();
     // 管理者権限チェック
-    const userId = request.headers.get('x-user-id');
+    const userId = getSessionUserId(request);
     if (userId !== 'admin') {
       return NextResponse.json({ message: '権限がありません' }, { status: 403 });
     }
@@ -39,7 +40,7 @@ export async function DELETE(request: Request) {
   try {
     await connectToDatabase();
     // 管理者権限チェック
-    const userId = request.headers.get('x-user-id');
+    const userId = getSessionUserId(request);
     if (userId !== 'admin') {
       return NextResponse.json({ message: '権限がありません' }, { status: 403 });
     }

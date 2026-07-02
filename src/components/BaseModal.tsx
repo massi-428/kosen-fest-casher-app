@@ -27,14 +27,14 @@ export const BaseModal = ({ isOpen, onClose, children, closeOnOverlayClick = tru
 
   return (
     <div 
-      className="fixed inset-0 z-[100] flex items-center justify-center bg-black bg-opacity-50 transition-opacity animate-fadeIn"
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-black bg-opacity-50 transition-opacity p-4 font-sans"
       onClick={() => {
         // ★修正: 設定がtrueの場合のみ閉じる
         if (closeOnOverlayClick) onClose();
       }} 
     >
       <div 
-        className="bg-white rounded-xl shadow-2xl p-6 w-96 max-h-[90vh] overflow-y-auto transform transition-all scale-100 animate-bounceIn"
+        className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-md max-h-[90vh] overflow-y-auto transform transition-all animate-bounceIn"
         onClick={(e) => e.stopPropagation()} 
       >
         {children}

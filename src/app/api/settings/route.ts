@@ -1,14 +1,15 @@
 import { NextResponse } from 'next/server';
 import connectToDatabase from '@/lib/db';
 import Setting from '@/models/Setting';
+import { getSessionUserId, unauthorizedResponse } from '@/lib/auth';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(request: Request) {
   try {
     await connectToDatabase();
-    const userId = request.headers.get('x-user-id');
-    if (!userId) return NextResponse.json({ message: '認証エラー' }, { status: 401 });
+    const userId = getSessionUserId(request);
+    if (!userId) return unauthorizedResponse();
     
     let setting = await Setting.findOne({ ownerId: userId, key: 'app_config' });
 
@@ -43,8 +44,8 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     await connectToDatabase();
-    const userId = request.headers.get('x-user-id');
-    if (!userId) return NextResponse.json({ message: '認証エラー' }, { status: 401 });
+    const userId = getSessionUserId(request);
+    if (!userId) return unauthorizedResponse();
 
     const body = await request.json();
     

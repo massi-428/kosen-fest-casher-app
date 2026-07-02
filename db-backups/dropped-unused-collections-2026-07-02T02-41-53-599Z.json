@@ -1,0 +1,113 @@
+{
+  "global_settings": [
+    {
+      "_id": "69721a1c6c2ae43cb1709d3a",
+      "ownerId": "admin",
+      "key": "app_config",
+      "maxTicketNumber": 30,
+      "paymentMethods": [
+        "現金",
+        "クレジットカード",
+        "PayPay",
+        "交通系IC"
+      ],
+      "customizations": [
+        {
+          "name": "氷少なめ",
+          "price": 0,
+          "_id": "69721a1c6c2ae43cb1709d3b"
+        },
+        {
+          "name": "大盛り",
+          "price": 100,
+          "_id": "69721a1c6c2ae43cb1709d3c"
+        }
+      ],
+      "lostTickets": [],
+      "createdAt": "2026-01-22T12:37:48.648Z",
+      "updatedAt": "2026-01-22T12:37:48.648Z",
+      "__v": 0
+    },
+    {
+      "_id": "69721a586c2ae43cb1709d44",
+      "key": "global_config",
+      "maxTicketNumber": 30,
+      "paymentMethods": [
+        "現金",
+        "クレジットカード",
+        "PayPay",
+        "交通系IC"
+      ],
+      "customizations": [
+        {
+          "name": "大盛り",
+          "price": 100,
+          "_id": "69721a586c2ae43cb1709d46"
+        }
+      ],
+      "lostTickets": [],
+      "createdAt": "2026-01-22T12:38:48.740Z",
+      "updatedAt": "2026-01-26T04:06:22.251Z",
+      "__v": 0
+    }
+  ],
+  "settings_legacy_2026-07-02T02-38-33-419Z": [
+    {
+      "_id": "693a4f8d434884a9081ebb74",
+      "key": "app_config",
+      "maxTicketNumber": 3,
+      "createdAt": "2025-12-11T04:58:53.091Z",
+      "updatedAt": "2025-12-18T05:05:36.990Z",
+      "__v": 0,
+      "paymentMethods": [
+        "現金",
+        "クレジットカード",
+        "PayPay",
+        "交通系IC"
+      ],
+      "customizations": [
+        {
+          "name": "大盛",
+          "price": 100,
+          "_id": "693bace040455eae1407a59e"
+        },
+        {
+          "name": "肉",
+          "price": 100,
+          "_id": "6943882bccb978d91d87744b"
+        },
+        {
+          "name": "端なし",
+          "price": -100,
+          "_id": "69438ba0ccb978d91d877e3e"
+        }
+      ]
+    }
+  ],
+  "settings_v2": [
+    {
+      "_id": "6971c3217d803ccc120900f3",
+      "key": "app_config",
+      "ownerId": "admin",
+      "__v": 0,
+      "createdAt": "2026-01-22T06:26:41.333Z",
+      "customizations": [
+        {
+          "name": "大盛",
+          "price": 100,
+          "_id": "697217066c2ae43cb1709b44"
+        },
+        {
+          "name": "ハーフ",
+          "price": -100,
+          "_id": "697217066c2ae43cb1709b45"
+        }
+      ],
+      "lostTickets": [],
+      "maxTicketNumber": 3,
+      "paymentMethods": [],
+      "updatedAt": "2026-01-22T12:33:13.445Z"
+    }
+  ],
+  "users": []
+}

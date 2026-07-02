@@ -1,6 +1,14 @@
 "use client";
 
 import React, { useState, useEffect, useCallback } from 'react';
+import { HamburgerMenu as SharedHamburgerMenu } from '@/components/common/HamburgerMenu';
+import {
+  ConfirmModal as SharedConfirmModal,
+  DetailModal as SharedDetailModal,
+  LostTicketModal as SharedLostTicketModal,
+  PaymentModal as SharedPaymentModal,
+  ResultModal as SharedResultModal,
+} from '@/components/order/OrderModals';
 import { Toast } from '@/components/common/Toast'; // ★追加: Toastコンポーネントをインポート
 
 // --- ユーティリティ ---
@@ -18,12 +26,6 @@ const apiFetch = async (url: string, options: RequestInit = {}) => {
     const absoluteUrl = url.startsWith('http') ? url : new URL(url, baseUrl).toString();
     
     const headers = new Headers(options.headers || {});
-    if (typeof window !== 'undefined') {
-      const userId = localStorage.getItem('currentUserId');
-      if (userId) {
-        headers.set('x-user-id', userId);
-      }
-    }
     
     return await fetch(absoluteUrl, { ...options, headers });
   } catch (e) {
@@ -50,246 +52,6 @@ type Product = {
   _id: string;
   name: string;
   price: number;
-};
-
-// --- ベースモーダル ---
-const BaseModal = ({ isOpen, onClose, children, closeOnOverlayClick = true }: { isOpen: boolean; onClose: () => void; children: React.ReactNode; closeOnOverlayClick?: boolean }) => {
-  useEffect(() => {
-    const handleEsc = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && closeOnOverlayClick) onClose();
-    };
-    if (isOpen) window.addEventListener('keydown', handleEsc);
-    return () => window.removeEventListener('keydown', handleEsc);
-  }, [isOpen, onClose, closeOnOverlayClick]);
-
-  if (!isOpen) return null;
-
-  return (
-    <div 
-      className="fixed inset-0 z-[100] flex items-center justify-center bg-black bg-opacity-50 transition-opacity p-4 font-sans"
-      onClick={() => closeOnOverlayClick && onClose()} 
-    >
-      <div 
-        className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-md max-h-[90vh] overflow-y-auto transform transition-all animate-bounceIn"
-        onClick={(e) => e.stopPropagation()} 
-      >
-        {children}
-      </div>
-    </div>
-  );
-};
-
-// --- モーダル一覧 ---
-
-const ResultModal = ({ isOpen, title, message, type, onClose }: any) => (
-  <BaseModal isOpen={isOpen} onClose={onClose}>
-    <div className={`text-center mb-4 text-4xl ${type === 'success' ? 'text-green-500' : 'text-red-500'}`}>
-      {type === 'success' ? '✓' : '!'}
-    </div>
-    <h3 className="text-xl font-bold text-gray-800 text-center mb-2">{title}</h3>
-    <p className="text-gray-600 text-center mb-6 whitespace-pre-wrap">{message}</p>
-    <button onClick={onClose} className="w-full py-4 bg-[#f3b928] text-gray-900 rounded-xl font-bold hover:bg-[#d6a11b] transition shadow-lg">
-      閉じる
-    </button>
-  </BaseModal>
-);
-
-const ConfirmModal = ({ isOpen, message, onConfirm, onCancel }: any) => (
-  <BaseModal isOpen={isOpen} onClose={onCancel}>
-    <div className="text-center mb-4 text-4xl text-yellow-500">?</div>
-    <h3 className="text-xl font-bold text-gray-800 text-center mb-4">確認</h3>
-    <p className="text-gray-600 text-center mb-6 whitespace-pre-wrap font-medium">{message}</p>
-    <div className="flex gap-3 mt-6">
-      <button onClick={onCancel} className="flex-1 py-3 bg-gray-100 text-gray-700 rounded-xl font-bold hover:bg-gray-200 transition">
-        キャンセル
-      </button>
-      <button onClick={onConfirm} className="flex-1 py-3 bg-[#f3b928] text-gray-900 rounded-xl font-bold hover:bg-[#d6a11b] transition shadow-md">
-        実行する
-      </button>
-    </div>
-  </BaseModal>
-);
-
-const DetailModal = ({ isOpen, productName, currentDetail, currentOptions, optionsList, onSave, onClose }: any) => {
-  const [noteVal, setNoteVal] = useState<string>("");
-  const [selectedOpts, setSelectedOpts] = useState<CustomOption[]>([]);
-  
-  useEffect(() => { 
-    if (isOpen) {
-      setNoteVal(currentDetail || ""); 
-      setSelectedOpts(currentOptions || []);
-    }
-  }, [currentDetail, currentOptions, isOpen]);
-
-  const toggleOption = (option: CustomOption) => {
-    const exists = selectedOpts.find(o => o.name === option.name);
-    if (exists) {
-      setSelectedOpts(selectedOpts.filter(o => o.name !== option.name));
-    } else {
-      setSelectedOpts([...selectedOpts, option]);
-    }
-  };
-
-  return (
-    <BaseModal isOpen={isOpen} onClose={onClose}>
-      <h3 className="text-lg font-bold text-gray-800 mb-4 border-b pb-2">詳細設定: {productName}</h3>
-      <div className="mb-6">
-        <p className="text-xs text-gray-500 mb-3 font-bold uppercase tracking-wider">オプション（複数選択可）</p>
-        <div className="flex flex-wrap gap-2">
-          {optionsList && optionsList.map((opt: CustomOption, index: number) => {
-            if (!opt.name) return null;
-            const isSelected = selectedOpts.some(o => o.name === opt.name);
-            return (
-              <button
-                key={`${opt.name}-${index}`} 
-                onClick={() => toggleOption(opt)}
-                className={`px-4 py-2.5 rounded-xl text-sm border-2 transition-all duration-200 font-bold ${
-                  isSelected 
-                    ? 'bg-[#f3b928] text-gray-900 border-[#d6a11b] shadow-md transform scale-105' : 'bg-white text-gray-600 border-gray-200 hover:border-[#f3b928]'
-                }`}
-              >
-                <span>{opt.name}</span>
-                {opt.price !== 0 && (
-                  <span className={`text-xs ml-1 ${isSelected ? 'text-gray-800' : (opt.price < 0 ? 'text-red-500' : 'text-gray-400')}`}>
-                    ({opt.price > 0 ? '+' : ''}{opt.price}円)
-                  </span>
-                )}
-              </button>
-            );
-          })}
-        </div>
-      </div>
-      <div className="mb-6">
-        <p className="text-xs text-gray-500 mb-2 font-bold uppercase tracking-wider">備考メモ</p>
-        <textarea
-          value={noteVal}
-          onChange={(e) => setNoteVal(e.target.value)}
-          className="w-full border-2 border-gray-200 p-3 rounded-xl h-24 outline-none focus:ring-2 focus:ring-[#f3b928] font-sans text-sm resize-none"
-          placeholder="例: ネギ抜き、マヨ多めなど"
-        />
-      </div>
-      <div className="flex gap-3">
-        <button onClick={onClose} className="flex-1 py-3 bg-gray-100 text-gray-600 rounded-xl font-bold hover:bg-gray-200 transition">キャンセル</button>
-        <button onClick={() => onSave(noteVal, selectedOpts)} className="flex-1 py-3 bg-[#f3b928] text-gray-900 rounded-xl font-bold hover:bg-[#d6a11b] transition shadow-lg">保存</button>
-      </div>
-    </BaseModal>
-  );
-};
-
-const PaymentModal = ({ isOpen, paymentMethods, totalAmount, onConfirm, onCancel }: any) => {
-  const [selected, setSelected] = useState("");
-  useEffect(() => { if (isOpen) setSelected(""); }, [isOpen]);
-  if (!isOpen) return null;
-
-  return (
-    <BaseModal isOpen={isOpen} onClose={onCancel} closeOnOverlayClick={false}>
-      <h3 className="text-xl font-bold text-gray-800 text-center mb-1">お支払い</h3>
-      <p className="text-center text-gray-400 text-sm mb-4 font-bold uppercase tracking-widest">決済方法を選択してください</p>
-      <div className="bg-[#fff8e1] p-4 rounded-2xl mb-6 text-center">
-        <span className="text-gray-500 text-sm block font-bold mb-1">合計金額</span>
-        <span className="text-4xl font-black text-[#d6a11b] font-mono">¥{totalAmount.toLocaleString()}</span>
-      </div>
-      
-      <div className="grid grid-cols-2 gap-3 mb-8">
-        {paymentMethods.map((method: string) => (
-          <button
-            key={method}
-            onClick={() => setSelected(method)}
-            className={`py-5 px-2 rounded-2xl font-black text-lg transition-all duration-200 shadow-sm border-2 ${
-              selected === method ? 'bg-[#f3b928] text-gray-900 border-[#d6a11b] ring-4 ring-yellow-100 shadow-xl transform scale-105' : 'bg-white text-gray-700 border-gray-100 hover:bg-gray-50 hover:border-blue-200'
-            }`}
-          >
-            {method}
-          </button>
-        ))}
-      </div>
-      <div className="flex gap-3">
-        <button onClick={onCancel} className="flex-1 py-4 bg-gray-100 text-gray-500 rounded-xl font-bold hover:bg-gray-200 transition">戻る</button>
-        <button
-          onClick={() => onConfirm(selected)}
-          disabled={!selected}
-          className={`flex-[2] py-4 text-white rounded-xl font-black text-xl transition-all shadow-lg ${selected ? 'bg-green-500 hover:bg-green-600 text-white' : 'bg-gray-300 cursor-not-allowed text-white'}`}
-        >
-          注文を確定
-        </button>
-      </div>
-    </BaseModal>
-  );
-};
-
-// 整理券除外設定モーダル
-const LostTicketModal = ({ isOpen, maxTicketNumber, lostTickets, onToggle, onClose }: any) => (
-  <BaseModal isOpen={isOpen} onClose={onClose}>
-    <h3 className="text-lg font-bold text-gray-800 mb-2">整理券除外設定</h3>
-    <p className="text-xs text-gray-500 mb-4">紛失した番号を選択してください。発券時にスキップされます。</p>
-    <div className="grid grid-cols-5 gap-2 max-h-64 overflow-y-auto p-2 mb-4 bg-gray-50 rounded-lg border-2">
-      {Array.from({ length: maxTicketNumber }, (_, i) => i + 1).map((num) => {
-        const isLost = lostTickets.includes(num);
-        return (
-          <button
-            key={num}
-            onClick={() => onToggle(num)}
-            className={`p-2 rounded font-bold text-sm transition border-2 ${isLost ? 'bg-red-500 text-white border-red-600 shadow-inner' : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-100'}`}
-          >
-            {num}
-          </button>
-        );
-      })}
-    </div>
-    <button onClick={onClose} className="w-full py-3 bg-[#f3b928] text-gray-900 rounded-lg font-bold hover:bg-[#d6a11b] transition">
-      設定を閉じる
-    </button>
-  </BaseModal>
-);
-
-const HamburgerMenu = ({ onNavigate, onReset }: { onNavigate: (path: string) => void, onReset: () => void }) => {
-  const [isOpen, setIsOpen] = useState(false);
-
-  // メニュー項目の定義
-  const menuItems = [
-    { path: '/settings', label: 'システム設定', icon: '/image/icon/setting.png' },
-    { path: '/report', label: '営業日報', icon: '/image/icon/report.png' },
-    { path: '/history', label: '注文履歴', icon: '/image/icon/history.png' },
-    { path: '/kds', label: '調理画面 (KDS)', icon: '/image/icon/kds.png' }
-  ];
-
-  return (
-    <div className="relative z-50">
-      <button onClick={() => setIsOpen(!isOpen)} className="p-2 text-gray-600 hover:bg-gray-100 rounded-xl transition-colors focus:outline-none">
-        <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d={isOpen ? "M6 18L18 6M6 6l12 12" : "M4 6h16M4 12h16M4 18h16"} /></svg>
-      </button>
-      {isOpen && (
-        <>
-          <div className="fixed inset-0 z-40" onClick={() => setIsOpen(false)}></div>
-          <div className="absolute right-0 mt-3 w-60 bg-white rounded-2xl shadow-2xl border border-gray-100 animate-fadeIn origin-top-right overflow-hidden z-50">
-            <div className="py-2">
-              {menuItems.map((item) => (
-                <button 
-                  key={item.path} 
-                  onClick={() => { onNavigate(item.path); setIsOpen(false); }} 
-                  className="w-full text-left px-5 py-4 text-gray-700 hover:bg-[#fff8e1] hover:text-[#d6a11b] transition font-bold text-sm flex items-center gap-3"
-                >
-                  <div className="relative w-5 h-5 flex-shrink-0">
-                    <img 
-                      src={item.icon} 
-                      alt={item.label} 
-                      className="w-full h-full object-contain"
-                      onError={(e) => { e.currentTarget.style.display = 'none'; }}
-                    />
-                  </div>
-                  {item.label}
-                </button>
-              ))}
-              <div className="border-t border-gray-100 my-2"></div>
-              <button onClick={() => { onReset(); setIsOpen(false); }} className="block w-full text-left px-5 py-4 text-red-600 hover:bg-red-50 transition text-xs font-black uppercase tracking-widest">
-                ⚠️ データリセット
-              </button>
-            </div>
-          </div>
-        </>
-      )}
-    </div>
-  );
 };
 
 // --- メインコンポーネント ---
@@ -498,13 +260,13 @@ export default function OrderPage() {
   return (
     <div className="flex h-screen bg-gray-100 overflow-hidden font-sans text-gray-900 relative">
       {/* モーダル・トースト群 */}
-      <ResultModal isOpen={modals.result} {...modalData} onClose={() => toggleModal('result', false)} />
-      <ConfirmModal isOpen={modals.confirm} {...modalData} onCancel={() => toggleModal('confirm', false)} />
+      <SharedResultModal isOpen={modals.result} {...modalData} onClose={() => toggleModal('result', false)} />
+      <SharedConfirmModal isOpen={modals.confirm} {...modalData} onCancel={() => toggleModal('confirm', false)} />
       
       {/* ★追加: トーストUI */}
       <Toast show={toast.show} message={toast.message} type={toast.type} onClose={() => setToast(prev => ({ ...prev, show: false }))} />
 
-      <DetailModal isOpen={modals.detail} {...modalData} optionsList={customizationOptions} onSave={(d: string, o: CustomOption[]) => {
+      <SharedDetailModal isOpen={modals.detail} {...modalData} optionsList={customizationOptions} onSave={(d: string, o: CustomOption[]) => {
         setCartItems(prev => {
           const target = prev[modalData.index];
           if (!target) return prev;
@@ -516,8 +278,8 @@ export default function OrderPage() {
         });
         toggleModal('detail', false);
       }} onClose={() => toggleModal('detail', false)} />
-      <PaymentModal isOpen={modals.payment} paymentMethods={paymentMethods} totalAmount={totalAmount} onConfirm={handleOrder} onCancel={() => toggleModal('payment', false)} />
-      <LostTicketModal isOpen={modals.lost} maxTicketNumber={maxTicketNumber} lostTickets={lostTickets} onToggle={toggleLostTicket} onClose={() => toggleModal('lost', false)} />
+      <SharedPaymentModal isOpen={modals.payment} paymentMethods={paymentMethods} totalAmount={totalAmount} onConfirm={handleOrder} onCancel={() => toggleModal('payment', false)} />
+      <SharedLostTicketModal isOpen={modals.lost} maxTicketNumber={maxTicketNumber} lostTickets={lostTickets} onToggle={toggleLostTicket} onClose={() => toggleModal('lost', false)} />
 
       {/* 左エリア: メニュー */}
       <div className="w-3/5 flex flex-col h-full bg-white border-r">
@@ -527,7 +289,7 @@ export default function OrderPage() {
             <button onClick={() => setIsEditMode(!isEditMode)} className={`px-4 py-2 rounded-full font-bold text-sm transition-all shadow-sm ${isEditMode ? 'bg-red-500 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
               {isEditMode ? "終了" : "商品管理"}
             </button>
-            <HamburgerMenu onNavigate={(p) => router.push(p)} onReset={() => toggleModal('confirm', true, { message: "全データをリセットして初期化しますか？\n（商品リストは保持されます）", onConfirm: async () => { await apiFetch('/api/debug/reset', { method: 'DELETE' }); window.location.reload(); } })} />
+            <SharedHamburgerMenu onNavigate={(p) => router.push(p)} onReset={() => toggleModal('confirm', true, { message: "全データをリセットして初期化しますか？\n（商品リストは保持されます）", onConfirm: async () => { await apiFetch('/api/debug/reset', { method: 'DELETE' }); window.location.reload(); } })} />
           </div>
         </div>
         <div className="flex-1 p-4 overflow-y-auto bg-gray-50/30">

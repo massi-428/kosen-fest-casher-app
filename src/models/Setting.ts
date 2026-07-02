@@ -42,6 +42,6 @@ if (process.env.NODE_ENV !== 'production') {
   delete models.Setting;
 }
 
-const Setting = models.Setting || model('Setting', SettingSchema, 'settings_v3');
+const Setting = models.Setting || model('Setting', SettingSchema, 'settings');
 
 export default Setting;
