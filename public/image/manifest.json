@@ -1,0 +1,23 @@
+{
+  "name": "ROOTINE",
+  "short_name": "ROOTINE",
+  "description": "ROOTINEで巡ってゆく、私たちの高専祭",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#f3b928",
+  "icons": [
+    {
+      "src": "/image/ROOTINE_Logo_color.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/image/ROOTINE_Logo_color.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

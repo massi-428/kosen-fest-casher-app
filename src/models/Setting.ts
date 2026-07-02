@@ -1,8 +1,7 @@
 import mongoose, { Schema, model, models } from 'mongoose';
 
 const SettingSchema = new Schema({
-  // ★修正: 共通設定にするため ownerId は必須でなくす
-  ownerId: { type: String, required: false, index: true },
+  ownerId: { type: String, required: true, index: true },
   key: {
     type: String,
     default: 'app_config',
@@ -31,6 +30,11 @@ const SettingSchema = new Schema({
   lostTickets: {
     type: [Number],
     default: []
+  },
+  // ★追加: キャンセル用パスワード
+  cancelPassword: {
+    type: String,
+    default: '0000'
   }
 }, { timestamps: true });
 
@@ -38,7 +42,6 @@ if (process.env.NODE_ENV !== 'production') {
   delete models.Setting;
 }
 
-// コレクション名を 'global_settings' に変更して心機一転させます
-const Setting = models.Setting || model('Setting', SettingSchema, 'global_settings');
+const Setting = models.Setting || model('Setting', SettingSchema, 'settings_v3');
 
 export default Setting;

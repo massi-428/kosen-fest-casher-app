@@ -17,7 +17,7 @@ if (process.env.NODE_ENV !== 'production') {
   delete models.User;
 }
 
-// ★修正: コレクション名を 'accounts' に戻しました
+// ★修正: コレクション名を元の 'accounts' に戻しました
 const User = models.User || model('User', UserSchema, 'accounts');
 
 export default User;

@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useCallback } from 'react';
+import { Toast } from '@/components/common/Toast'; // ★追加: Toastコンポーネントをインポート
 
 // --- ユーティリティ ---
 const useRouter = () => ({
@@ -19,7 +20,9 @@ const apiFetch = async (url: string, options: RequestInit = {}) => {
     const headers = new Headers(options.headers || {});
     if (typeof window !== 'undefined') {
       const userId = localStorage.getItem('currentUserId');
-      if (userId) headers.set('x-user-id', userId);
+      if (userId) {
+        headers.set('x-user-id', userId);
+      }
     }
     
     return await fetch(absoluteUrl, { ...options, headers });
@@ -148,7 +151,7 @@ const DetailModal = ({ isOpen, productName, currentDetail, currentOptions, optio
                 <span>{opt.name}</span>
                 {opt.price !== 0 && (
                   <span className={`text-xs ml-1 ${isSelected ? 'text-gray-800' : (opt.price < 0 ? 'text-red-500' : 'text-gray-400')}`}>
-                    ({opt.price > 0 ? '+' : ''}{opt.price})
+                    ({opt.price > 0 ? '+' : ''}{opt.price}円)
                   </span>
                 )}
               </button>
@@ -193,7 +196,7 @@ const PaymentModal = ({ isOpen, paymentMethods, totalAmount, onConfirm, onCancel
             key={method}
             onClick={() => setSelected(method)}
             className={`py-5 px-2 rounded-2xl font-black text-lg transition-all duration-200 shadow-sm border-2 ${
-              selected === method ? 'bg-[#f3b928] text-gray-900 border-[#d6a11b] ring-4 ring-yellow-100 shadow-xl transform scale-105' : 'bg-white text-gray-700 border-gray-100 hover:bg-gray-50 hover:border-[#f3b928]'
+              selected === method ? 'bg-[#f3b928] text-gray-900 border-[#d6a11b] ring-4 ring-yellow-100 shadow-xl transform scale-105' : 'bg-white text-gray-700 border-gray-100 hover:bg-gray-50 hover:border-blue-200'
             }`}
           >
             {method}
@@ -205,7 +208,7 @@ const PaymentModal = ({ isOpen, paymentMethods, totalAmount, onConfirm, onCancel
         <button
           onClick={() => onConfirm(selected)}
           disabled={!selected}
-          className={`flex-[2] py-4 text-white rounded-xl font-black text-xl transition-all shadow-lg ${selected ? 'bg-green-500 hover:bg-green-600' : 'bg-gray-300 cursor-not-allowed'}`}
+          className={`flex-[2] py-4 text-white rounded-xl font-black text-xl transition-all shadow-lg ${selected ? 'bg-green-500 hover:bg-green-600 text-white' : 'bg-gray-300 cursor-not-allowed text-white'}`}
         >
           注文を確定
         </button>
@@ -214,6 +217,7 @@ const PaymentModal = ({ isOpen, paymentMethods, totalAmount, onConfirm, onCancel
   );
 };
 
+// 整理券除外設定モーダル
 const LostTicketModal = ({ isOpen, maxTicketNumber, lostTickets, onToggle, onClose }: any) => (
   <BaseModal isOpen={isOpen} onClose={onClose}>
     <h3 className="text-lg font-bold text-gray-800 mb-2">整理券除外設定</h3>
@@ -240,6 +244,15 @@ const LostTicketModal = ({ isOpen, maxTicketNumber, lostTickets, onToggle, onClo
 
 const HamburgerMenu = ({ onNavigate, onReset }: { onNavigate: (path: string) => void, onReset: () => void }) => {
   const [isOpen, setIsOpen] = useState(false);
+
+  // メニュー項目の定義
+  const menuItems = [
+    { path: '/settings', label: 'システム設定', icon: '/image/icon/setting.png' },
+    { path: '/report', label: '営業日報', icon: '/image/icon/report.png' },
+    { path: '/history', label: '注文履歴', icon: '/image/icon/history.png' },
+    { path: '/kds', label: '調理画面 (KDS)', icon: '/image/icon/kds.png' }
+  ];
+
   return (
     <div className="relative z-50">
       <button onClick={() => setIsOpen(!isOpen)} className="p-2 text-gray-600 hover:bg-gray-100 rounded-xl transition-colors focus:outline-none">
@@ -250,13 +263,20 @@ const HamburgerMenu = ({ onNavigate, onReset }: { onNavigate: (path: string) => 
           <div className="fixed inset-0 z-40" onClick={() => setIsOpen(false)}></div>
           <div className="absolute right-0 mt-3 w-60 bg-white rounded-2xl shadow-2xl border border-gray-100 animate-fadeIn origin-top-right overflow-hidden z-50">
             <div className="py-2">
-              {[
-                { path: '/settings', label: '⚙️ システム設定' },
-                { path: '/report', label: '📈 営業日報' },
-                { path: '/history', label: '📊 注文履歴' },
-                { path: '/kds', label: '📺 調理画面 (KDS)' }
-              ].map(item => (
-                <button key={item.path} onClick={() => { onNavigate(item.path); setIsOpen(false); }} className="block w-full text-left px-5 py-4 text-gray-700 hover:bg-[#fff8e1] hover:text-[#d6a11b] transition font-bold text-sm">
+              {menuItems.map((item) => (
+                <button 
+                  key={item.path} 
+                  onClick={() => { onNavigate(item.path); setIsOpen(false); }} 
+                  className="w-full text-left px-5 py-4 text-gray-700 hover:bg-[#fff8e1] hover:text-[#d6a11b] transition font-bold text-sm flex items-center gap-3"
+                >
+                  <div className="relative w-5 h-5 flex-shrink-0">
+                    <img 
+                      src={item.icon} 
+                      alt={item.label} 
+                      className="w-full h-full object-contain"
+                      onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                    />
+                  </div>
                   {item.label}
                 </button>
               ))}
@@ -275,6 +295,8 @@ const HamburgerMenu = ({ onNavigate, onReset }: { onNavigate: (path: string) => 
 // --- メインコンポーネント ---
 export default function OrderPage() {
   const router = useRouter();
+  const [loading, setLoading] = useState(false);
+  
   const [products, setProducts] = useState<Product[]>([]);
   const [maxTicketNumber, setMaxTicketNumber] = useState(30); 
   const [currentTicket, setCurrentTicket] = useState<string>("1");
@@ -293,11 +315,18 @@ export default function OrderPage() {
 
   const [modals, setModals] = useState({ result: false, confirm: false, detail: false, payment: false, lost: false });
   const [modalData, setModalData] = useState<any>({});
-  const [loading, setLoading] = useState(false);
+  
+  // ★追加: トースト通知用ステート
+  const [toast, setToast] = useState<{show: boolean, message: string, type: 'success' | 'error'}>({ show: false, message: '', type: 'success' });
 
   const toggleModal = (key: keyof typeof modals, val: boolean, data = {}) => {
     setModals(prev => ({ ...prev, [key]: val }));
     if (val) setModalData(data);
+  };
+
+  // ★追加: トースト表示用関数
+  const showToast = (message: string, type: 'success' | 'error' = 'success') => {
+    setToast({ show: true, message, type });
   };
 
   // ログインチェック
@@ -401,7 +430,8 @@ export default function OrderPage() {
     try {
       const res = await apiFetch('/api/orders', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(orderData) });
       if (res.ok) {
-        toggleModal('result', true, { title: "注文完了", message: `整理券番号: ${currentTicket}`, type: "success" });
+        // ★変更: モーダルではなくトーストで通知を表示
+        showToast(`整理券番号: ${currentTicket}\n決済方法: ${method}`, 'success');
         setCartItems([]); setNote(""); fetchTicketStatus();
       } else {
         const err = await res.json().catch(() => ({}));
@@ -426,7 +456,8 @@ export default function OrderPage() {
     }});
   };
 
-  // 商品保存（編集モード）
+  const startEdit = (product: Product) => { setEditingProduct(product); setFormName(product.name); setFormPrice(String(product.price)); };
+  const startCreate = () => { setEditingProduct(null); setFormName(""); setFormPrice(""); };
   const handleSaveProduct = async () => {
     if (!formName || !formPrice) return toggleModal('result', true, { title: "入力エラー", message: "商品名と価格を入力してください", type: "error" });
     const method = editingProduct ? 'PUT' : 'POST';
@@ -437,7 +468,8 @@ export default function OrderPage() {
       if (res.ok) {
         fetchProducts(); 
         setEditingProduct(null); setFormName(""); setFormPrice("");
-        toggleModal('result', true, { title: "完了", message: "商品を保存しました", type: "success" });
+        // ★変更: 商品保存時もトーストを使用
+        showToast("商品を保存しました", 'success');
       } else {
         const errData = await res.json().catch(() => ({}));
         toggleModal('result', true, { title: "保存エラー", message: errData.message || "保存できませんでした", type: "error" });
@@ -455,7 +487,8 @@ export default function OrderPage() {
       if (res.ok) {
         fetchProducts();
         setEditingProduct(null); setFormName(""); setFormPrice("");
-        toggleModal('result', true, { title: "削除完了", message: "商品を削除しました", type: "success" });
+        // ★変更: 商品削除時もトーストを使用
+        showToast("商品を削除しました", 'success');
       } else {
         toggleModal('result', true, { title: "エラー", message: "削除に失敗しました", type: "error" });
       }
@@ -463,11 +496,14 @@ export default function OrderPage() {
   };
 
   return (
-    <div className="flex h-screen bg-gray-100 overflow-hidden font-sans text-gray-900">
-      {/* モーダル群 */}
+    <div className="flex h-screen bg-gray-100 overflow-hidden font-sans text-gray-900 relative">
+      {/* モーダル・トースト群 */}
       <ResultModal isOpen={modals.result} {...modalData} onClose={() => toggleModal('result', false)} />
       <ConfirmModal isOpen={modals.confirm} {...modalData} onCancel={() => toggleModal('confirm', false)} />
-      {/* 詳細設定: 商品分離ロジック搭載 */}
+      
+      {/* ★追加: トーストUI */}
+      <Toast show={toast.show} message={toast.message} type={toast.type} onClose={() => setToast(prev => ({ ...prev, show: false }))} />
+
       <DetailModal isOpen={modals.detail} {...modalData} optionsList={customizationOptions} onSave={(d: string, o: CustomOption[]) => {
         setCartItems(prev => {
           const target = prev[modalData.index];
@@ -577,6 +613,16 @@ export default function OrderPage() {
                   );
                 })
               }
+            </div>
+
+            <div className="px-6 py-2 bg-gray-50 border-t border-gray-200">
+              <p className="text-[10px] font-black text-gray-400 mb-2 uppercase tracking-widest">Active Tickets</p>
+              <div className="flex flex-wrap gap-2 max-h-20 overflow-y-auto">
+                {activeTickets.length === 0 && <span className="text-xs text-gray-400 font-bold">No active orders</span>}
+                {activeTickets.sort((a,b)=>a-b).map((num) => (
+                  <button key={num} onClick={() => toggleModal('confirm', true, { message: `${num}番の整理券を返却済みにしますか？`, onConfirm: async () => { toggleModal('confirm', false); const res = await apiFetch('/api/tickets', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ticketNumber: String(num) }) }); if(res.ok) fetchTicketStatus(); } })} className="bg-orange-100 text-orange-700 border border-orange-300 px-3 py-1 rounded-lg text-xs font-black hover:bg-orange-200 transition">{num}</button>
+                ))}
+              </div>
             </div>
 
             <div className="p-4 bg-white border-t-2 border-gray-100 shadow-2xl">

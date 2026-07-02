@@ -29,7 +29,13 @@ export default function Login() {
       const data = await res.json();
       if (res.ok) {
         if (typeof window !== 'undefined') localStorage.setItem('currentUserId', id);
-        router.push('/order');
+        
+        // ★修正: adminユーザーの場合は管理者専用画面へ遷移
+        if (id === 'admin') {
+          router.push('/admin');
+        } else {
+          router.push('/order');
+        }
       } else {
         setError(data.message || "ログイン失敗");
       }

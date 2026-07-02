@@ -44,18 +44,24 @@ const OrderTicket = ({ order, onComplete, onPending, isPendingMode = false }: an
     return () => clearInterval(interval);
   }, [order.createdAt, isPendingMode]);
 
-  const headerStyle = isPendingMode ? "bg-gradient-to-br from-gray-500 to-gray-600 shadow-md shadow-gray-200" : (alertLevel === 'critical' ? "bg-gradient-to-br from-red-600 to-rose-600 shadow-md shadow-red-200 animate-pulse" : (alertLevel === 'warning' ? "bg-gradient-to-br from-yellow-500 to-amber-500 shadow-md shadow-yellow-200" : "bg-gradient-to-br from-blue-600 to-blue-500 shadow-md shadow-blue-200"));
+  const headerStyles = {
+    normal: "bg-gradient-to-br from-blue-600 to-blue-500 shadow-md shadow-blue-200 text-white",
+    warning: "bg-gradient-to-br from-yellow-500 to-amber-500 shadow-md shadow-yellow-200 text-white",
+    critical: "bg-gradient-to-br from-red-600 to-rose-600 shadow-md shadow-red-200 animate-pulse text-white",
+    pending: "bg-gradient-to-br from-gray-500 to-gray-600 shadow-md shadow-gray-200 text-white",
+  };
+  const headerStyle = isPendingMode ? headerStyles.pending : headerStyles[alertLevel];
 
   return (
     <div className={`flex flex-col bg-white rounded-2xl shadow-xl overflow-hidden border-2 h-full transition-all duration-300 hover:shadow-2xl ${isPendingMode ? 'border-gray-300 opacity-90 scale-[0.98]' : 'border-gray-100'}`}>
-      <div className={`${headerStyle} text-white p-2 flex justify-between items-center relative overflow-hidden`}>
+      <div className={`${headerStyle} p-2 flex justify-between items-center relative overflow-hidden`}>
         <div className="absolute -top-4 -right-4 w-16 h-16 bg-white opacity-10 rounded-full blur-xl pointer-events-none"></div>
         <div className="flex items-center gap-2 z-10 pl-1">
-          <span className="text-[10px] font-bold uppercase tracking-widest border border-white/30 px-1.5 py-0.5 rounded shadow-sm backdrop-blur-sm h-fit self-start mt-1">No.</span>
-          <span className="text-5xl font-black leading-none tracking-tighter drop-shadow-md">{order.ticketNumber}</span>
+          <span className="text-[10px] font-bold uppercase tracking-widest border border-white/30 px-1.5 py-0.5 rounded shadow-sm backdrop-blur-sm h-fit self-start mt-1 opacity-90">No.</span>
+          <span className="text-5xl font-black leading-none tracking-tighter drop-shadow-sm">{order.ticketNumber}</span>
         </div>
         <div className="flex flex-col items-end justify-center z-10 pl-3 border-l border-white/20 ml-2 pr-1">
-          <span className="text-[9px] font-bold uppercase tracking-widest opacity-90 mb-0.5">{isPendingMode ? 'PENDING' : 'TIME'}</span>
+          <span className="text-[9px] font-bold uppercase tracking-widest opacity-80 mb-0.5">{isPendingMode ? 'PENDING' : 'TIME'}</span>
           <span className="text-3xl font-mono font-bold leading-none tracking-tight drop-shadow-sm">{elapsedTime}</span>
         </div>
       </div>
@@ -64,14 +70,14 @@ const OrderTicket = ({ order, onComplete, onPending, isPendingMode = false }: an
           {order.items.map((item: any, idx: number) => (
             <li key={idx} className="border-b-2 border-dashed border-gray-200 pb-2 last:border-0">
               <div className="flex justify-between items-start">
-                <span className="text-xl font-bold text-gray-800 leading-tight w-3/4 break-words">{item.productName}</span>
-                <span className="bg-gray-800 text-white px-3 py-1 rounded-lg text-xl font-black min-w-[2.5rem] text-center shadow-sm">{item.quantity}</span>
+                <span className="text-3xl font-bold text-gray-800 leading-tight w-3/4 break-words">{item.productName}</span>
+                <span className="bg-gray-800 text-white px-3 py-1 rounded-lg text-3xl font-black min-w-[3.5rem] text-center shadow-sm">{item.quantity}</span>
               </div>
               <div className="flex flex-wrap gap-1.5 mt-1">
                 {item.selectedOptions && item.selectedOptions.map((opt: any, i: number) => (
-                  <span key={i} className="text-xs bg-orange-50 text-orange-800 px-1.5 py-0.5 rounded border border-orange-200 font-bold flex items-center gap-1"><span className="w-1 h-1 rounded-full bg-orange-400"></span>{opt.name}</span>
+                  <span key={i} className="text-sm bg-orange-50 text-orange-800 px-2 py-1 rounded border border-orange-200 font-bold flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-orange-400"></span>{opt.name}</span>
                 ))}
-                {item.detail && <div className="text-xs text-blue-800 bg-blue-50 px-2 py-1 rounded border border-blue-200 font-bold w-full break-words flex items-start gap-1"><span className="text-blue-400">✎</span>{item.detail}</div>}
+                {item.detail && <div className="text-sm text-blue-800 bg-blue-50 px-2 py-1 rounded border border-blue-200 font-bold w-full break-words flex items-start gap-1"><span className="text-blue-400 mt-0.5">✎</span>{item.detail}</div>}
               </div>
             </li>
           ))}
@@ -79,10 +85,23 @@ const OrderTicket = ({ order, onComplete, onPending, isPendingMode = false }: an
         {order.note && <div className="mt-auto pt-3"><div className="p-2 bg-yellow-50 border-2 border-yellow-200 rounded-lg text-gray-800 shadow-sm"><span className="block text-[9px] text-yellow-600 font-black mb-0.5 uppercase tracking-widest">NOTE</span><span className="text-base font-bold">{order.note}</span></div></div>}
       </div>
       <div className="p-2 bg-white border-t-2 border-gray-100 flex gap-2 h-20 items-center">
+        {/* ★変更: 保留ボタンをシンプルな棒線二本（一時停止マーク）に変更 */}
         <button onClick={() => onPending(order._id, order.ticketNumber)} className={`h-full rounded-xl shadow-sm transition-all transform active:scale-95 text-white font-bold flex-1 flex flex-col justify-center items-center gap-0.5 ${isPendingMode ? 'bg-blue-500 hover:bg-blue-600' : 'bg-gray-400 hover:bg-gray-500'}`}>
-          <span className="text-2xl">{isPendingMode ? '↩︎' : '⏸'}</span>
+          {isPendingMode ? (
+            // 復帰: 再生マーク風
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8" viewBox="0 0 24 24" fill="currentColor">
+               <path d="M8 5v14l11-7z" />
+            </svg>
+          ) : (
+            // 保留: 棒線二本
+            <div className="flex gap-1.5 h-6 items-center justify-center">
+               <div className="w-2.5 h-6 bg-white rounded-sm"></div>
+               <div className="w-2.5 h-6 bg-white rounded-sm"></div>
+            </div>
+          )}
           <span className="text-[10px]">{isPendingMode ? '復帰' : '保留'}</span>
         </button>
+
         <button onClick={() => onComplete(order._id, order.ticketNumber)} className="h-full flex-[3] bg-green-600 hover:bg-green-700 active:bg-green-800 text-white rounded-xl shadow-md transition-all transform active:scale-95 flex items-center justify-center gap-2 group"><span className="text-2xl font-black tracking-wider">DONE</span></button>
       </div>
     </div>

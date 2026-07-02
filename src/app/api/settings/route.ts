@@ -4,31 +4,33 @@ import Setting from '@/models/Setting';
 
 export const dynamic = 'force-dynamic';
 
-// 共通設定のキー
-const GLOBAL_KEY = 'global_config';
-
-export async function GET() {
+export async function GET(request: Request) {
   try {
     await connectToDatabase();
+    const userId = request.headers.get('x-user-id');
+    if (!userId) return NextResponse.json({ message: '認証エラー' }, { status: 401 });
     
-    // ユーザーIDに関係なく、共通の設定を取得
-    let setting = await Setting.findOne({ key: GLOBAL_KEY });
+    let setting = await Setting.findOne({ ownerId: userId, key: 'app_config' });
 
     if (!setting) {
       try {
         setting = await Setting.create({ 
-          key: GLOBAL_KEY, 
+          ownerId: userId,
+          key: 'app_config', 
           maxTicketNumber: 30,
           paymentMethods: ['現金', 'クレジットカード', 'PayPay', '交通系IC'],
           customizations: [
             { name: '氷少なめ', price: 0 },
-            { name: '大盛り', price: 100 }
+            { name: 'ネギ抜き', price: 0 },
+            { name: '大盛り', price: 100 },
+            { name: 'テイクアウト', price: 0 }
           ],
-          lostTickets: [] 
+          lostTickets: [],
+          cancelPassword: '0000'
         });
       } catch (e: any) {
         // 並列リクエスト等で作成済みの場合の再取得
-        setting = await Setting.findOne({ key: GLOBAL_KEY });
+        setting = await Setting.findOne({ ownerId: userId, key: 'app_config' });
       }
     }
 
@@ -41,8 +43,9 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     await connectToDatabase();
-    // 認証チェックはあえて外すか、ログインしていればOKとする（今回は緩めに設定）
-    
+    const userId = request.headers.get('x-user-id');
+    if (!userId) return NextResponse.json({ message: '認証エラー' }, { status: 401 });
+
     const body = await request.json();
     
     const updateData: any = {};
@@ -50,13 +53,15 @@ export async function POST(request: Request) {
     if (body.paymentMethods) updateData.paymentMethods = body.paymentMethods;
     if (body.customizations) updateData.customizations = body.customizations;
     if (body.lostTickets !== undefined) updateData.lostTickets = body.lostTickets;
+    
+    // ★追加: キャンセル用パスワードの更新
+    if (body.cancelPassword !== undefined) updateData.cancelPassword = body.cancelPassword;
 
-    // 共通設定を更新
     const updated = await Setting.findOneAndUpdate(
-      { key: GLOBAL_KEY },
+      { ownerId: userId, key: 'app_config' },
       { 
         $set: updateData,
-        $setOnInsert: { key: GLOBAL_KEY }
+        $setOnInsert: { ownerId: userId, key: 'app_config' }
       },
       { new: true, upsert: true, setDefaultsOnInsert: true }
     );
