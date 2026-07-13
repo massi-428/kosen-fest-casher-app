@@ -6,27 +6,37 @@ if (!MONGODB_URI) {
   throw new Error('環境変数 MONGODB_URI が定義されていません。');
 }
 
-let cached = (global as any).mongoose;
+type MongooseCache = {
+  conn: typeof mongoose | null;
+  promise: Promise<typeof mongoose> | null;
+};
+
+const globalWithMongoose = global as typeof globalThis & {
+  mongoose?: MongooseCache;
+};
+
+let cached = globalWithMongoose.mongoose;
 
 if (!cached) {
-  cached = (global as any).mongoose = { conn: null, promise: null };
+  cached = globalWithMongoose.mongoose = { conn: null, promise: null };
 }
+const mongooseCache = cached;
 
 async function connectToDatabase() {
-  if (cached.conn) {
-    return cached.conn;
+  if (mongooseCache.conn) {
+    return mongooseCache.conn;
   }
 
-  if (!cached.promise) {
+  if (!mongooseCache.promise) {
     const opts = {
       bufferCommands: false,
     };
-    cached.promise = mongoose.connect(MONGODB_URI!, opts).then((mongoose) => {
+    mongooseCache.promise = mongoose.connect(MONGODB_URI!, opts).then((mongoose) => {
       return mongoose;
     });
   }
-  cached.conn = await cached.promise;
-  return cached.conn;
+  mongooseCache.conn = await mongooseCache.promise;
+  return mongooseCache.conn;
 }
 
 export default connectToDatabase;

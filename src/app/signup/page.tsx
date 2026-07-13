@@ -33,7 +33,7 @@ export default function Signup() {
         // エラー詳細を表示
         setError(data.message + (data.error ? ` (${data.error})` : ""));
       }
-    } catch (err) {
+    } catch {
       setError("通信エラーが発生しました。サーバーが起動しているか確認してください。");
     } finally {
       setLoading(false);

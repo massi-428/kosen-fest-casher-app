@@ -1,7 +1,8 @@
-import mongoose, { Schema, model, models } from 'mongoose';
+import { Schema, model, models } from 'mongoose';
 
 const SettingSchema = new Schema({
   ownerId: { type: String, required: true, index: true },
+  storeId: { type: String, required: false, index: true },
   key: {
     type: String,
     default: 'app_config',
@@ -18,24 +19,23 @@ const SettingSchema = new Schema({
   customizations: {
     type: [{
       name: String,
-      price: Number
+      price: Number,
     }],
     default: [
       { name: '氷少なめ', price: 0 },
       { name: 'ネギ抜き', price: 0 },
       { name: '大盛り', price: 100 },
-      { name: 'テイクアウト', price: 0 }
+      { name: 'テイクアウト', price: 0 },
     ],
   },
   lostTickets: {
     type: [Number],
-    default: []
+    default: [],
   },
-  // ★追加: キャンセル用パスワード
   cancelPassword: {
     type: String,
-    default: '0000'
-  }
+    default: '0000',
+  },
 }, { timestamps: true });
 
 if (process.env.NODE_ENV !== 'production') {

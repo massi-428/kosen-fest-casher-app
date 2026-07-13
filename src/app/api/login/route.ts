@@ -2,40 +2,62 @@ import { NextResponse } from 'next/server';
 import connectToDatabase from '@/lib/db';
 import User from '@/models/User';
 import { hashPassword, isPasswordHash, setAuthCookie, verifyPassword } from '@/lib/auth';
+import { normalizeUserRole } from '@/lib/authorization';
+import { ensureDefaultStore } from '@/lib/store';
 
 export async function POST(request: Request) {
   try {
     await connectToDatabase();
     const { id, password } = await request.json();
 
-    console.log("Login attempt:", id);
-
-    // ユーザー検索
     const user = await User.findOne({ userId: id });
-
     if (!user) {
-      console.log("User not found:", id);
-      return NextResponse.json({ message: 'IDが見つかりません' }, { status: 401 });
+      return NextResponse.json({ message: 'ID????????' }, { status: 401 });
     }
 
-    // パスワード照合
     const passwordMatches = await verifyPassword(password, user.password);
     if (!passwordMatches) {
-      console.log("Password mismatch for:", id);
-      return NextResponse.json({ message: 'パスワードが間違っています' }, { status: 401 });
+      return NextResponse.json({ message: '?????????????' }, { status: 401 });
     }
 
+    let needsSave = false;
     if (!isPasswordHash(user.password)) {
       user.password = await hashPassword(password);
-      await user.save();
+      needsSave = true;
     }
 
-    console.log("Login successful:", id);
-    const response = NextResponse.json({ message: 'ログイン成功' }, { status: 200 });
-    setAuthCookie(response, id);
+    const role = normalizeUserRole(user.userId, user.role);
+    if (user.role !== role) {
+      user.role = role;
+      needsSave = true;
+    }
+
+    let activeStoreId = '';
+    if (role === 'admin') {
+      if ((user.storeIds?.length || 0) > 0 || user.activeStoreId) {
+        user.storeIds = [];
+        user.activeStoreId = '';
+        needsSave = true;
+      }
+    } else {
+      activeStoreId = await ensureDefaultStore(id);
+      if (!user.storeIds?.includes(activeStoreId) || user.activeStoreId !== activeStoreId) {
+        user.storeIds = [activeStoreId];
+        user.activeStoreId = activeStoreId;
+        needsSave = true;
+      }
+    }
+
+    if (needsSave) await user.save();
+
+    const response = NextResponse.json({ message: '??????', role }, { status: 200 });
+    setAuthCookie(response, id, activeStoreId);
     return response;
-  } catch (error: any) {
-    console.error("Login Error:", error);
-    return NextResponse.json({ message: 'サーバーエラー', error: error.message }, { status: 500 });
+  } catch (error) {
+    console.error('Login Error:', error);
+    return NextResponse.json(
+      { message: '???????', error: error instanceof Error ? error.message : 'unknown error' },
+      { status: 500 },
+    );
   }
 }

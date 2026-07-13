@@ -1,0 +1,173 @@
+import assert from 'node:assert/strict';
+import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
+import { join, relative } from 'node:path';
+import test from 'node:test';
+
+const root = process.cwd();
+const read = (path) => readFileSync(join(root, path), 'utf8');
+
+const sourceFiles = (dir) => {
+  const entries = readdirSync(join(root, dir));
+  return entries.flatMap((entry) => {
+    const fullPath = join(root, dir, entry);
+    const relPath = relative(root, fullPath).replaceAll('\\', '/');
+    const stat = statSync(fullPath);
+    if (stat.isDirectory()) return sourceFiles(relPath);
+    return /\.(ts|tsx)$/.test(entry) ? [relPath] : [];
+  });
+};
+
+test('auth sessions are cookie-based and signed', () => {
+  const auth = read('src/lib/auth.ts');
+
+  assert.match(auth, /httpOnly:\s*true/);
+  assert.match(auth, /sameSite:\s*'lax'/);
+  assert.match(auth, /createHmac\('sha256'/);
+  assert.match(auth, /timingSafeEqual/);
+});
+
+test('/api/me exposes cookie session state without localStorage', () => {
+  const me = read('src/app/api/me/route.ts');
+
+  assert.match(me, /getSessionUser\(request\)/);
+  assert.match(me, /authenticated:\s*true/);
+  assert.match(me, /role:\s*user\.role/);
+  assert.match(me, /isAdmin:\s*user\.role === 'admin'/);
+});
+
+
+test('users have role-based authorization fields', () => {
+  const userModel = read('src/models/User.ts');
+  const authorization = read('src/lib/authorization.ts');
+  const adminDatabase = read('src/app/api/admin/database/route.ts');
+
+  assert.match(userModel, /role:/);
+  assert.match(userModel, /enum:\s*\['admin', 'store'\]/);
+  assert.match(authorization, /normalizeUserRole/);
+  assert.match(authorization, /if \(userId === 'admin'\) return 'admin'/);
+  assert.match(authorization, /isAdminRequest/);
+  assert.doesNotMatch(adminDatabase, /userId\s*!==\s*'admin'/);
+});
+test('logout clears the auth cookie and is reachable from the main menu', () => {
+  const logoutRoute = read('src/app/api/logout/route.ts');
+  const hamburgerMenu = read('src/components/common/HamburgerMenu.tsx');
+  const orderPage = read('src/app/order/page.tsx');
+
+  assert.match(logoutRoute, /clearAuthCookie\(response\)/);
+  assert.match(hamburgerMenu, /onLogout\?: \(\) => void/);
+  assert.match(hamburgerMenu, /ログアウト/);
+  assert.match(orderPage, /\/api\/logout/);
+});
+
+test('hamburger menu icon assets exist under public', () => {
+  const hamburgerMenu = read('src/components/common/HamburgerMenu.tsx');
+  const iconPaths = [...hamburgerMenu.matchAll(/icon: '([^']+)'/g)].map((match) => match[1]);
+
+  assert.ok(iconPaths.length > 0, 'menu should declare icon paths');
+  assert.match(hamburgerMenu, /bg-gray-900/, 'white menu icons need a visible dark menu background');
+  for (const iconPath of iconPaths) {
+    const publicPath = iconPath.replace(/^\//, 'public/');
+    assert.ok(existsSync(join(root, publicPath)), `${iconPath} should exist`);
+  }
+});
+
+test('client auth checks do not trust localStorage currentUserId', () => {
+  const appFiles = sourceFiles('src/app');
+  const offenders = appFiles.filter((file) => read(file).includes('localStorage'));
+
+  assert.deepEqual(offenders, []);
+});
+
+test('cancelled tickets require the admin cancel password', () => {
+  const ticketsRoute = read('src/app/api/tickets/route.ts');
+  const historyPage = read('src/app/history/page.tsx');
+  const systemModel = read('src/models/SystemSetting.ts');
+  const systemRoute = read('src/app/api/admin/system-settings/route.ts');
+
+  assert.match(systemModel, /cancelPassword/);
+  assert.match(systemRoute, /cancelPassword/);
+  assert.match(ticketsRoute, /getCancelPassword\(\)/);
+  assert.match(ticketsRoute, /newStatus === 'cancelled'/);
+  assert.match(ticketsRoute, /status: 403/);
+  assert.match(historyPage, /window\.prompt/);
+  assert.match(historyPage, /cancelPassword/);
+});
+
+test('store data is scoped by storeId in core APIs', () => {
+  const files = [
+    'src/app/api/products/route.ts',
+    'src/app/api/orders/route.ts',
+    'src/app/api/tickets/route.ts',
+    'src/app/api/report/route.ts',
+    'src/app/api/settings/route.ts',
+  ];
+
+  for (const file of files) {
+    const source = read(file);
+    assert.match(source, /getActiveStoreContext\(request\)/, `${file} must use store context`);
+    assert.match(source, /storeId:\s*context\.storeId/, `${file} must query or write by storeId`);
+  }
+});
+
+test('admin login does not assign store context', () => {
+  const loginRoute = read('src/app/api/login/route.ts');
+  const loginPage = read('src/app/login/page.tsx');
+
+  assert.match(loginRoute, /if \(role === 'admin'\)/);
+  assert.match(loginRoute, /user\.storeIds = \[\]/);
+  assert.match(loginRoute, /setAuthCookie\(response, id, activeStoreId\)/);
+  assert.match(loginPage, /data\.role === 'admin'/);
+});
+
+test('store creation is limited and one store per user', () => {
+  const storesRoute = read('src/app/api/stores/route.ts');
+  const signupRoute = read('src/app/api/signup/route.ts');
+  const storeLib = read('src/lib/store.ts');
+
+  assert.match(storesRoute, /Store\.findOne\(\{\s*ownerUserId:\s*session\.userId\s*\}\)/);
+  assert.match(storesRoute, /1ユーザーにつき作成できる店舗は1件までです/);
+  assert.match(storesRoute, /canCreateStore\(\)/);
+  assert.match(signupRoute, /canCreateStore\(\)/);
+  assert.match(storeLib, /Store\.countDocuments\(\)/);
+});
+
+test('system-wide maxStores is stored outside store settings', () => {
+  const systemModel = read('src/models/SystemSetting.ts');
+  const systemRoute = read('src/app/api/admin/system-settings/route.ts');
+  const settingRoute = read('src/app/api/settings/route.ts');
+
+  assert.match(systemModel, /'system_settings'/);
+  assert.match(systemRoute, /maxStores/);
+  assert.doesNotMatch(settingRoute, /maxStores/);
+});
+
+test('admin store management hides admin and removes cleanup button', () => {
+  const adminStores = read('src/app/api/admin/stores/route.ts');
+  const adminPage = read('src/app/admin/page.tsx');
+
+  assert.match(adminStores, /User\.find\(\{\s*userId:\s*\{\s*\$ne:\s*'admin'\s*\}/);
+  assert.match(adminStores, /Store\.find\(\{\s*ownerUserId:\s*\{\s*\$ne:\s*'admin'\s*\}/);
+  assert.doesNotMatch(adminPage, /cleanupStores/);
+});
+
+test('admin cleanup consolidates duplicate stores into one owner store', () => {
+  const adminStores = read('src/app/api/admin/stores/route.ts');
+
+  assert.match(adminStores, /User\.find\(\{\s*userId:\s*\{\s*\$ne:\s*'admin'\s*\}\s*\}\)/);
+  assert.match(adminStores, /ownerUserId:\s*'admin'/);
+  assert.match(adminStores, /storeIds:\s*\[\]/);
+  assert.match(adminStores, /Store\.find\(\{\s*ownerUserId:\s*user\.userId\s*\}\)/);
+  assert.match(adminStores, /duplicateStores = stores\.slice\(1\)/);
+  assert.match(adminStores, /Product\.updateMany\(\{\s*storeId:\s*duplicateStoreId\s*\}/);
+  assert.match(adminStores, /Order\.updateMany\(\{\s*storeId:\s*duplicateStoreId\s*\}/);
+  assert.match(adminStores, /Setting\.updateMany\(\{\s*storeId:\s*duplicateStoreId\s*\}/);
+  assert.match(adminStores, /Store\.deleteMany/);
+});
+
+test('source files do not contain common mojibake fragments', () => {
+  const mojibakePattern = /繧|縺|繝|譁|蜊|隱|螟|豕|蝠|謨|邂|蟾|蜿|髱|霑|荳|遒|鬆|菫|螳|逡|謇|蜑|逅|驥|蛻|譖|蠎/;
+  const offenders = sourceFiles('src')
+    .filter((file) => mojibakePattern.test(read(file)));
+
+  assert.deepEqual(offenders, []);
+});

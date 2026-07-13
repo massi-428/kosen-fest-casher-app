@@ -12,28 +12,33 @@ const apiFetch = async (url: string, options: RequestInit = {}) => {
     const absoluteUrl = url.startsWith('http') ? url : new URL(url, baseUrl).toString();
     const headers = new Headers(options.headers || {});
     return await fetch(absoluteUrl, { ...options, headers });
-  } catch (e) { return { ok: false, status: 500, json: async () => ({ message: "通信エラー" }) } as Response; }
+  } catch { return { ok: false, status: 500, json: async () => ({ message: "通信エラー" }) } as Response; }
 };
 
 // --- 型定義 ---
 type CustomOption = { name: string; price: number; };
 type OrderItem = { productName: string; quantity: number; amount: number; detail?: string; selectedOptions?: CustomOption[]; };
 type Order = { _id: string; ticketNumber: string; items: OrderItem[]; totalAmount: number; status: 'active' | 'completed' | 'cancelled'; paymentMethod?: string; note?: string; createdAt: string; };
+type OrderStatusFilter = 'all' | Order['status'];
+type ModalData = Partial<
+  React.ComponentProps<typeof SharedResultModal> &
+  React.ComponentProps<typeof SharedConfirmModal>
+>;
 
 
 // --- メインコンポーネント ---
 export default function HistoryPage() {
   const router = useRouter();
   const [orders, setOrders] = useState<Order[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [filterStatus, setFilterStatus] = useState<'all' | 'active' | 'completed' | 'cancelled'>('all');
-  const [lastUpdated, setLastUpdated] = useState<string>("");
+  const [, setLoading] = useState(true);
+  const [filterStatus, setFilterStatus] = useState<OrderStatusFilter>('all');
+  const [, setLastUpdated] = useState<string>("");
 
   // モーダル管理ステート
   const [modals, setModals] = useState({ result: false, confirm: false });
-  const [modalData, setModalData] = useState<any>({});
+  const [modalData, setModalData] = useState<ModalData>({});
 
-  const toggleModal = (key: keyof typeof modals, val: boolean, data = {}) => {
+  const toggleModal = (key: keyof typeof modals, val: boolean, data: ModalData = {}) => {
     setModals(prev => ({ ...prev, [key]: val }));
     if (val) setModalData(data);
   };
@@ -62,21 +67,28 @@ export default function HistoryPage() {
         try {
           await apiFetch('/api/tickets', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ticketNumber: order.ticketNumber, orderId: order._id, status: newStatus }) });
           setTimeout(fetchOrders, 500); 
-        } catch (error) { fetchOrders(); }
+        } catch { fetchOrders(); }
       }
     });
   };
 
   const handleCancelOrder = (order: Order) => {
+    const cancelPassword = window.prompt('\u30ad\u30e3\u30f3\u30bb\u30eb\u7528\u30d1\u30b9\u30ef\u30fc\u30c9\u3092\u5165\u529b\u3057\u3066\u304f\u3060\u3055\u3044');
+    if (cancelPassword === null) return;
+
     toggleModal('confirm', true, {
       message: `${order.ticketNumber}番の注文をキャンセル（返金）扱いにしますか？\n※この操作は取り消せません。`,
       onConfirm: async () => {
         toggleModal('confirm', false);
         setOrders(prev => prev.map(o => o._id === order._id ? { ...o, status: 'cancelled' } : o));
         try {
-          await apiFetch('/api/tickets', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ticketNumber: order.ticketNumber, orderId: order._id, status: 'cancelled' }) });
+          const res = await apiFetch('/api/tickets', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ticketNumber: order.ticketNumber, orderId: order._id, status: 'cancelled', cancelPassword }) });
+          if (!res.ok) {
+            const data = await res.json().catch(() => ({}));
+            toggleModal('result', true, { title: '\u30ad\u30e3\u30f3\u30bb\u30eb\u5931\u6557', message: data.message || '\u30ad\u30e3\u30f3\u30bb\u30eb\u3067\u304d\u307e\u305b\u3093\u3067\u3057\u305f', type: 'error' });
+          }
           setTimeout(fetchOrders, 500);
-        } catch (error) { fetchOrders(); }
+        } catch { fetchOrders(); }
       }
     });
   };
@@ -104,14 +116,14 @@ export default function HistoryPage() {
     <div className="min-h-screen bg-gray-100 p-6 font-sans text-gray-900">
       
       {/* モーダル */}
-      <SharedResultModal isOpen={modals.result} {...modalData} onClose={() => toggleModal('result', false)} />
-      <SharedConfirmModal isOpen={modals.confirm} {...modalData} onCancel={() => toggleModal('confirm', false)} />
+      <SharedResultModal isOpen={modals.result} title={modalData.title || ''} message={modalData.message || ''} type={modalData.type || 'success'} onClose={() => toggleModal('result', false)} />
+      <SharedConfirmModal isOpen={modals.confirm} message={modalData.message || ''} onConfirm={modalData.onConfirm || (() => {})} onCancel={() => toggleModal('confirm', false)} />
 
       <div className="flex justify-between items-center mb-6 bg-white p-4 rounded-xl shadow-md">
         <h1 className="text-3xl font-bold text-gray-800">注文履歴と管理</h1>
         <div className="flex items-center gap-4">
           <button onClick={() => router.push('/order')} className="text-gray-500 hover:text-gray-700 font-bold px-4 py-2 bg-gray-100 rounded-lg transition mr-2">← 注文画面へ</button>
-          <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value as any)} className="border border-gray-300 p-2 rounded-lg font-bold outline-none focus:ring-2 focus:ring-[#f3b928]">
+          <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value as OrderStatusFilter)} className="border border-gray-300 p-2 rounded-lg font-bold outline-none focus:ring-2 focus:ring-[#f3b928]">
             <option value="all">全て表示</option>
             <option value="active">調理中</option>
             <option value="completed">完了済み</option>

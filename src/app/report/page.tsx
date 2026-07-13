@@ -61,16 +61,16 @@ export default function ReportPage() {
   const router = useRouter();
   const [date, setDate] = useState(getTodayString());
   const [orders, setOrders] = useState<Order[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [, setLoading] = useState(false);
 
   // ログインチェック
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const userId = localStorage.getItem('currentUserId');
-      if (!userId) {
-        router.push('/login');
-      }
-    }
+    const checkSession = async () => {
+      const res = await apiFetch('/api/me', { cache: 'no-store' });
+      if (!res.ok) router.push('/login');
+    };
+    checkSession();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // データ取得

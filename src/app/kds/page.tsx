@@ -8,7 +8,7 @@ const apiFetch = async (url: string, options: RequestInit = {}) => {
     const absoluteUrl = url.startsWith('http') ? url : new URL(url, baseUrl).toString();
     const headers = new Headers(options.headers || {});
     return await fetch(absoluteUrl, { ...options, headers });
-  } catch (e) {
+  } catch {
     return { ok: false, status: 500, json: async () => ({ message: "通信エラー" }) } as Response;
   }
 };
@@ -16,8 +16,15 @@ const apiFetch = async (url: string, options: RequestInit = {}) => {
 type CustomOption = { name: string; price: number; };
 type OrderItem = { productName: string; price: number; quantity: number; amount: number; detail?: string; selectedOptions?: CustomOption[]; };
 type Order = { _id: string; ticketNumber: string; items: OrderItem[]; totalAmount: number; status: 'active' | 'completed' | 'pending'; createdAt: string; note?: string; };
+type OrderStatus = Order['status'];
+type OrderTicketProps = {
+  order: Order;
+  onComplete: (orderId: string, ticketNumber: string) => void;
+  onPending: (orderId: string, ticketNumber: string) => void;
+  isPendingMode?: boolean;
+};
 
-const OrderTicket = ({ order, onComplete, onPending, isPendingMode = false }: any) => {
+const OrderTicket = ({ order, onComplete, onPending, isPendingMode = false }: OrderTicketProps) => {
   const [elapsedTime, setElapsedTime] = useState("");
   const [alertLevel, setAlertLevel] = useState<"normal" | "warning" | "critical">("normal");
 
@@ -63,14 +70,14 @@ const OrderTicket = ({ order, onComplete, onPending, isPendingMode = false }: an
       </div>
       <div className="flex-1 p-3 bg-gray-50/50 flex flex-col">
         <ul className="space-y-3 mb-2">
-          {order.items.map((item: any, idx: number) => (
+          {order.items.map((item, idx) => (
             <li key={idx} className="border-b-2 border-dashed border-gray-200 pb-2 last:border-0">
               <div className="flex justify-between items-start">
                 <span className="text-3xl font-bold text-gray-800 leading-tight w-3/4 break-words">{item.productName}</span>
                 <span className="bg-gray-800 text-white px-3 py-1 rounded-lg text-3xl font-black min-w-[3.5rem] text-center shadow-sm">{item.quantity}</span>
               </div>
               <div className="flex flex-wrap gap-1.5 mt-1">
-                {item.selectedOptions && item.selectedOptions.map((opt: any, i: number) => (
+                {item.selectedOptions && item.selectedOptions.map((opt, i) => (
                   <span key={i} className="text-sm bg-orange-50 text-orange-800 px-2 py-1 rounded border border-orange-200 font-bold flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-orange-400"></span>{opt.name}</span>
                 ))}
                 {item.detail && <div className="text-sm text-blue-800 bg-blue-50 px-2 py-1 rounded border border-blue-200 font-bold w-full break-words flex items-start gap-1"><span className="text-blue-400 mt-0.5">✎</span>{item.detail}</div>}
@@ -106,14 +113,14 @@ const OrderTicket = ({ order, onComplete, onPending, isPendingMode = false }: an
 
 export default function KitchenDisplaySystem() {
   const [orders, setOrders] = useState<Order[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [, setLoading] = useState(true);
 
   const fetchOrders = useCallback(async () => {
     try {
       const res = await apiFetch('/api/orders', { cache: 'no-store' });
       if (res.ok) {
         const data: Order[] = await res.json();
-        const uniqueOrdersMap = new Map();
+        const uniqueOrdersMap = new Map<string, Order>();
         data.forEach(order => { if (order._id) uniqueOrdersMap.set(String(order._id), order); });
         const uniqueOrders = Array.from(uniqueOrdersMap.values()) as Order[];
         setOrders(uniqueOrders.filter(o => o.status === 'active' || o.status === 'pending').sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()));
@@ -123,9 +130,9 @@ export default function KitchenDisplaySystem() {
 
   useEffect(() => { fetchOrders(); const interval = setInterval(fetchOrders, 5000); return () => clearInterval(interval); }, [fetchOrders]);
 
-  const updateStatus = async (orderId: string, ticketNumber: string, newStatus: string) => {
-    setOrders(prev => { if (newStatus === 'completed') return prev.filter(o => o._id !== orderId); return prev.map(o => o._id === orderId ? { ...o, status: newStatus as any } : o); });
-    try { await apiFetch('/api/tickets', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ticketNumber: String(ticketNumber), status: newStatus, orderId: orderId }), cache: 'no-store' }); setTimeout(fetchOrders, 500); } catch (e) { fetchOrders(); }
+  const updateStatus = async (orderId: string, ticketNumber: string, newStatus: OrderStatus) => {
+    setOrders(prev => { if (newStatus === 'completed') return prev.filter(o => o._id !== orderId); return prev.map(o => o._id === orderId ? { ...o, status: newStatus } : o); });
+    try { await apiFetch('/api/tickets', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ticketNumber: String(ticketNumber), status: newStatus, orderId: orderId }), cache: 'no-store' }); setTimeout(fetchOrders, 500); } catch { fetchOrders(); }
   };
 
   const activeOrders = orders.filter(o => o.status === 'active');

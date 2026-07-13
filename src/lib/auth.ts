@@ -7,6 +7,7 @@ const SESSION_TTL_SECONDS = 60 * 60 * 24 * 7;
 
 type SessionPayload = {
   userId: string;
+  activeStoreId?: string;
   exp: number;
 };
 
@@ -49,9 +50,10 @@ export const verifyPassword = async (inputPassword: string, storedPassword: stri
   return inputPassword === storedPassword;
 };
 
-export const createSessionToken = (userId: string) => {
+export const createSessionToken = (userId: string, activeStoreId?: string) => {
   const payload: SessionPayload = {
     userId,
+    activeStoreId,
     exp: Math.floor(Date.now() / 1000) + SESSION_TTL_SECONDS,
   };
   const encodedPayload = base64url(JSON.stringify(payload));
@@ -80,16 +82,20 @@ export const verifySessionToken = (token: string | undefined) => {
   }
 };
 
-export const getSessionUserId = (request: Request) => {
+export const getSession = (request: Request) => {
   const cookies = parseCookies(request.headers.get('cookie'));
-  const session = verifySessionToken(cookies.get(AUTH_COOKIE_NAME));
+  return verifySessionToken(cookies.get(AUTH_COOKIE_NAME));
+};
+
+export const getSessionUserId = (request: Request) => {
+  const session = getSession(request);
   return session?.userId || null;
 };
 
 export const unauthorizedResponse = () => NextResponse.json({ message: '認証エラー' }, { status: 401 });
 
-export const setAuthCookie = (response: NextResponse, userId: string) => {
-  response.cookies.set(AUTH_COOKIE_NAME, createSessionToken(userId), {
+export const setAuthCookie = (response: NextResponse, userId: string, activeStoreId?: string) => {
+  response.cookies.set(AUTH_COOKIE_NAME, createSessionToken(userId, activeStoreId), {
     httpOnly: true,
     sameSite: 'lax',
     secure: process.env.NODE_ENV === 'production',
