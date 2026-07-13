@@ -103,3 +103,36 @@ test('MongoDB integration: duplicate stores can be consolidated into the oldest 
     await mongoose.disconnect();
   }
 });
+
+test('MongoDB integration: active ticket numbers are unique per store', { skip: shouldRun ? false : skipReason }, async () => {
+  const uri = withDatabaseName(process.env.MONGODB_URI, `${uniqueDbName}_tickets`);
+  await mongoose.connect(uri, { bufferCommands: false });
+
+  try {
+    const db = mongoose.connection.db;
+    assert.ok(db, 'database connection should be available');
+
+    const orders = db.collection('orders');
+    await orders.createIndex(
+      { storeId: 1, ticketNumber: 1 },
+      {
+        unique: true,
+        partialFilterExpression: { status: { $in: ['active', 'pending'] } },
+      },
+    );
+
+    await orders.insertOne({ ownerId: 'shop-1', storeId: 'store-1', ticketNumber: '1', items: [], totalAmount: 100, status: 'active' });
+    await assert.rejects(
+      () => orders.insertOne({ ownerId: 'shop-1', storeId: 'store-1', ticketNumber: '1', items: [], totalAmount: 200, status: 'pending' }),
+      /E11000/,
+    );
+
+    await orders.insertOne({ ownerId: 'shop-1', storeId: 'store-1', ticketNumber: '1', items: [], totalAmount: 300, status: 'completed' });
+    await orders.insertOne({ ownerId: 'shop-2', storeId: 'store-2', ticketNumber: '1', items: [], totalAmount: 400, status: 'active' });
+
+    assert.equal(await orders.countDocuments({ ticketNumber: '1' }), 3);
+  } finally {
+    await mongoose.connection.dropDatabase();
+    await mongoose.disconnect();
+  }
+});

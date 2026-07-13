@@ -1,11 +1,16 @@
 import { NextResponse } from 'next/server';
 import connectToDatabase from '@/lib/db';
 import Order from '@/models/Order';
+import Setting from '@/models/Setting';
+import TicketCounter from '@/models/TicketCounter';
 import { unauthorizedResponse } from '@/lib/auth';
 import { getActiveStoreContext } from '@/lib/store';
 import { badRequest, isNonEmptyString, isOptionalString, isOrderStatus, toValidPrice, toValidSignedPrice } from '@/lib/validation';
 
 export const dynamic = 'force-dynamic';
+
+const DEFAULT_MAX_TICKET_NUMBER = 30;
+const DUPLICATE_KEY_ERROR_CODE = 11000;
 
 type IncomingOrderOption = {
   name?: unknown;
@@ -20,6 +25,43 @@ type IncomingOrderItem = {
   selectedOptions?: unknown;
 };
 
+const getTicketConfig = async (storeId: string) => {
+  const setting = await Setting.findOne({ storeId, key: 'app_config' });
+  const maxTicketNumber = Number(setting?.maxTicketNumber || DEFAULT_MAX_TICKET_NUMBER);
+  const safeMaxTicketNumber = Number.isInteger(maxTicketNumber) && maxTicketNumber > 0 ? maxTicketNumber : DEFAULT_MAX_TICKET_NUMBER;
+  const lostTickets = Array.isArray(setting?.lostTickets)
+    ? setting.lostTickets.map((num: unknown) => Number(num)).filter((num: number) => Number.isInteger(num))
+    : [];
+
+  return { maxTicketNumber: safeMaxTicketNumber, lostTickets };
+};
+
+const issueTicketCandidate = async (storeId: string, maxTicketNumber: number) => {
+  const counter = await TicketCounter.findOneAndUpdate(
+    { storeId },
+    [
+      {
+        $set: {
+          storeId,
+          lastIssuedNumber: {
+            $let: {
+              vars: { nextNumber: { $add: [{ $ifNull: ['$lastIssuedNumber', 0] }, 1] } },
+              in: { $cond: [{ $gt: ['$$nextNumber', maxTicketNumber] }, 1, '$$nextNumber'] },
+            },
+          },
+        },
+      },
+    ],
+    { new: true, upsert: true, setDefaultsOnInsert: true },
+  );
+
+  return String(counter.lastIssuedNumber);
+};
+
+const isDuplicateTicketError = (error: unknown) => {
+  return typeof error === 'object' && error !== null && 'code' in error && error.code === DUPLICATE_KEY_ERROR_CODE;
+};
+
 export async function GET(request: Request) {
   try {
     await connectToDatabase();
@@ -29,7 +71,7 @@ export async function GET(request: Request) {
     const orders = await Order.find({ storeId: context.storeId }).sort({ createdAt: -1 });
     return NextResponse.json(orders, { status: 200 });
   } catch {
-    return NextResponse.json({ message: '注文情報の取得に失敗しました' }, { status: 500 });
+    return NextResponse.json({ message: 'Order fetch failed' }, { status: 500 });
   }
 }
 
@@ -42,8 +84,8 @@ export async function POST(request: Request) {
     const body = await request.json();
     const status = body.status === undefined ? 'active' : body.status;
     const totalAmount = toValidPrice(body.totalAmount);
-    if (!isNonEmptyString(body.ticketNumber, 20) || !Array.isArray(body.items) || body.items.length === 0 || body.items.length > 100) return badRequest('注文内容が不正です');
-    if (totalAmount === null || !isOrderStatus(status) || !isOptionalString(body.paymentMethod, 80) || !isOptionalString(body.note, 500)) return badRequest('注文内容が不正です');
+    if (!Array.isArray(body.items) || body.items.length === 0 || body.items.length > 100) return badRequest('Invalid order items');
+    if (totalAmount === null || !isOrderStatus(status) || !isOptionalString(body.paymentMethod, 80) || !isOptionalString(body.note, 500)) return badRequest('Invalid order payload');
 
     const items = (body.items as IncomingOrderItem[]).map((item) => {
       const quantity = Number(item.quantity);
@@ -69,21 +111,45 @@ export async function POST(request: Request) {
       };
     });
 
-    if (items.some((item) => item === null)) return badRequest('注文詳細が不正です');
+    if (items.some((item) => item === null)) return badRequest('Invalid order details');
 
-    const newOrder = await Order.create({
-      ownerId: context.userId,
-      storeId: context.storeId,
-      ticketNumber: body.ticketNumber.trim(),
-      items,
-      totalAmount,
-      status,
-      paymentMethod: body.paymentMethod,
-      note: body.note || '',
-    });
+    const ticketConfig = await getTicketConfig(context.storeId);
+    const lostTickets = new Set(ticketConfig.lostTickets);
+    let newOrder = null;
+    let ticketNumber = '';
 
-    return NextResponse.json({ message: '注文完了', order: newOrder }, { status: 201 });
+    for (let i = 0; i < ticketConfig.maxTicketNumber; i += 1) {
+      const candidate = await issueTicketCandidate(context.storeId, ticketConfig.maxTicketNumber);
+      if (lostTickets.has(Number(candidate))) continue;
+
+      const activeTicket = await Order.exists({ storeId: context.storeId, ticketNumber: candidate, status: { $in: ['active', 'pending'] } });
+      if (activeTicket) continue;
+
+      try {
+        newOrder = await Order.create({
+          ownerId: context.userId,
+          storeId: context.storeId,
+          ticketNumber: candidate,
+          items,
+          totalAmount,
+          status,
+          paymentMethod: body.paymentMethod,
+          note: body.note || '',
+        });
+        ticketNumber = candidate;
+        break;
+      } catch (error) {
+        if (isDuplicateTicketError(error)) continue;
+        throw error;
+      }
+    }
+
+    if (!newOrder || !ticketNumber) {
+      return NextResponse.json({ message: 'No ticket numbers are available' }, { status: 409 });
+    }
+
+    return NextResponse.json({ message: 'Order created', order: newOrder, ticketNumber }, { status: 201 });
   } catch {
-    return NextResponse.json({ message: '注文の作成に失敗しました' }, { status: 500 });
+    return NextResponse.json({ message: 'Order creation failed' }, { status: 500 });
   }
 }

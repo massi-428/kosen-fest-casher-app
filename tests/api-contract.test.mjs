@@ -109,6 +109,25 @@ test('store data is scoped by storeId in core APIs', () => {
   }
 });
 
+test('orders are issued ticket numbers on the server', () => {
+  const ordersRoute = read('src/app/api/orders/route.ts');
+  const orderModel = read('src/models/Order.ts');
+  const ticketCounterModel = read('src/models/TicketCounter.ts');
+  const orderPage = read('src/app/order/page.tsx');
+
+  assert.match(ticketCounterModel, /'ticket_counters'/);
+  assert.match(orderModel, /partialFilterExpression:\s*\{\s*status:\s*\{\s*\$in:\s*\['active',\s*'pending'\]\s*\}/);
+  assert.match(ordersRoute, /TicketCounter\.findOneAndUpdate/);
+  assert.match(ordersRoute, /issueTicketCandidate/);
+  assert.match(ordersRoute, /DUPLICATE_KEY_ERROR_CODE/);
+  assert.match(ordersRoute, /Setting\.findOne\(\{\s*storeId,\s*key:\s*'app_config'\s*\}\)/);
+  assert.match(ordersRoute, /status:\s*\{\s*\$in:\s*\['active',\s*'pending'\]\s*\}/);
+  assert.match(ordersRoute, /No ticket numbers are available/);
+  assert.match(ordersRoute, /ticketNumber:\s*candidate/);
+  assert.doesNotMatch(orderPage, /ticketNumber:\s*currentTicket/);
+  assert.match(orderPage, /data\.ticketNumber \|\| data\.order\?\.ticketNumber/);
+});
+
 test('admin login does not assign store context', () => {
   const loginRoute = read('src/app/api/login/route.ts');
   const loginPage = read('src/app/login/page.tsx');

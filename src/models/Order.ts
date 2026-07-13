@@ -18,6 +18,14 @@ const OrderSchema = new Schema({
   orderDate: { type: Date, default: Date.now }
 }, { timestamps: true });
 
+OrderSchema.index(
+  { storeId: 1, ticketNumber: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { status: { $in: ['active', 'pending'] } },
+  },
+);
+
 if (process.env.NODE_ENV !== 'production') delete models.Order;
 const Order = models.Order || model('Order', OrderSchema, 'orders');
 export default Order;

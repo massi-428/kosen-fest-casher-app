@@ -149,7 +149,6 @@ export default function OrderPage() {
     toggleModal('payment', false);
     setLoading(true);
     const orderData = {
-      ticketNumber: currentTicket,
       items: cartItems.map((item) => ({
         productName: item.productName,
         quantity: item.quantity,
@@ -166,7 +165,9 @@ export default function OrderPage() {
     try {
       const res = await apiFetch('/api/orders', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(orderData) });
       if (res.ok) {
-        showToast(`整理番号: ${currentTicket}\n決済方法: ${method}`, 'success');
+        const data = await res.json().catch(() => ({}));
+        const issuedTicketNumber = data.ticketNumber || data.order?.ticketNumber || currentTicket;
+        showToast(`整理番号: ${issuedTicketNumber}\n決済方法: ${method}`, 'success');
         setCartItems([]);
         setNote('');
         fetchTicketStatus();
