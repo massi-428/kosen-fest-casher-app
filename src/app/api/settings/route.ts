@@ -9,6 +9,10 @@ export const dynamic = 'force-dynamic';
 
 type SettingUpdateData = {
   maxTicketNumber?: number;
+  maxPendingItemCount?: number;
+  maxItemsPerOrder?: number;
+  acceptingOrders?: boolean;
+  orderStopReason?: string;
   paymentMethods?: string[];
   customizations?: { name: string; price: number }[];
   lostTickets?: number[];
@@ -25,6 +29,11 @@ const defaultSetting = (userId: string, storeId: string) => ({
   storeId,
   key: 'app_config',
   maxTicketNumber: 30,
+  maxPendingItemCount: 30,
+  maxItemsPerOrder: 10,
+  acceptingOrders: true,
+  orderStopReason: '',
+  pendingItemCount: 0,
   paymentMethods: ['現金', 'クレジットカード', 'PayPay', '交通系IC'],
   customizations: [
     { name: '氷少なめ', price: 0 },
@@ -54,10 +63,8 @@ export async function GET(request: Request) {
 
     return NextResponse.json(setting, { status: 200 });
   } catch (error) {
-    return NextResponse.json(
-      { message: '設定の取得に失敗しました', error: error instanceof Error ? error.message : 'unknown error' },
-      { status: 500 },
-    );
+    console.error('設定取得エラー:', error);
+    return NextResponse.json({ message: '設定の取得に失敗しました。' }, { status: 500 });
   }
 }
 
@@ -74,6 +81,28 @@ export async function POST(request: Request) {
       const maxTicketNumber = Number(body.maxTicketNumber);
       if (!Number.isInteger(maxTicketNumber) || maxTicketNumber < 1 || maxTicketNumber > 9999) return badRequest('整理番号の最大値が不正です');
       updateData.maxTicketNumber = maxTicketNumber;
+    }
+
+    if (body.maxPendingItemCount !== undefined) {
+      const value = Number(body.maxPendingItemCount);
+      if (!Number.isInteger(value) || value < 1 || value > 9999) return badRequest('未提供本数上限が不正です。');
+      updateData.maxPendingItemCount = value;
+    }
+
+    if (body.maxItemsPerOrder !== undefined) {
+      const value = Number(body.maxItemsPerOrder);
+      if (!Number.isInteger(value) || value < 1 || value > 999) return badRequest('1注文の本数上限が不正です。');
+      updateData.maxItemsPerOrder = value;
+    }
+
+    if (body.acceptingOrders !== undefined) {
+      if (typeof body.acceptingOrders !== 'boolean') return badRequest('受注状態が不正です。');
+      updateData.acceptingOrders = body.acceptingOrders;
+    }
+
+    if (body.orderStopReason !== undefined) {
+      if (typeof body.orderStopReason !== 'string' || body.orderStopReason.length > 200) return badRequest('受注停止理由が不正です。');
+      updateData.orderStopReason = body.orderStopReason.trim();
     }
 
     if (body.paymentMethods) {
@@ -113,10 +142,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json(updated, { status: 200 });
   } catch (error) {
-    console.error('Settings POST Error:', error);
-    return NextResponse.json(
-      { message: '設定の保存に失敗しました', error: error instanceof Error ? error.message : 'unknown error' },
-      { status: 500 },
-    );
+    console.error('設定保存エラー:', error);
+    return NextResponse.json({ message: '設定の保存に失敗しました。' }, { status: 500 });
   }
 }

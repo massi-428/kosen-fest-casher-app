@@ -136,3 +136,38 @@ test('MongoDB integration: active ticket numbers are unique per store', { skip: 
     await mongoose.disconnect();
   }
 });
+
+test('MongoDB integration: request ids are unique per store and pending count can exceed the warning threshold', { skip: shouldRun ? false : skipReason }, async () => {
+  const uri = withDatabaseName(process.env.MONGODB_URI, `${uniqueDbName}_orders`);
+  await mongoose.connect(uri, { bufferCommands: false });
+
+  try {
+    const db = mongoose.connection.db;
+    assert.ok(db, 'database connection should be available');
+    const orders = db.collection('orders');
+    const settings = db.collection('settings');
+    await orders.createIndex({ storeId: 1, requestId: 1 }, { unique: true });
+
+    await orders.insertOne({ ownerId: 'shop-1', storeId: 'store-1', requestId: 'request-1', ticketNumber: '1' });
+    await assert.rejects(() => orders.insertOne({ ownerId: 'shop-1', storeId: 'store-1', requestId: 'request-1', ticketNumber: '2' }), /E11000/);
+    await orders.insertOne({ ownerId: 'shop-2', storeId: 'store-2', requestId: 'request-1', ticketNumber: '1' });
+    assert.equal(await orders.countDocuments({ requestId: 'request-1' }), 2);
+
+    await settings.insertOne({ storeId: 'store-1', key: 'app_config', acceptingOrders: true, pendingItemCount: 26, maxPendingItemCount: 30 });
+    const atLimit = await settings.findOneAndUpdate(
+      { storeId: 'store-1', $expr: { $lte: [{ $add: ['$pendingItemCount', 4] }, 30] } },
+      { $inc: { pendingItemCount: 4 } },
+      { returnDocument: 'after' },
+    );
+    assert.equal(atLimit.pendingItemCount, 30);
+    const overLimit = await settings.findOneAndUpdate(
+      { storeId: 'store-1', acceptingOrders: true },
+      { $inc: { pendingItemCount: 1 } },
+      { returnDocument: 'after' },
+    );
+    assert.equal(overLimit.pendingItemCount, 31);
+  } finally {
+    await mongoose.connection.dropDatabase();
+    await mongoose.disconnect();
+  }
+});

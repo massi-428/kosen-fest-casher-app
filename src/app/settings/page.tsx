@@ -21,6 +21,10 @@ type CustomOption = { name: string; price: number };
 
 export default function SettingsPage() {
   const [maxTicket, setMaxTicket] = useState<number | string>('');
+  const [maxPendingItemCount, setMaxPendingItemCount] = useState<number | string>(30);
+  const [maxItemsPerOrder, setMaxItemsPerOrder] = useState<number | string>(10);
+  const [acceptingOrders, setAcceptingOrders] = useState(true);
+  const [orderStopReason, setOrderStopReason] = useState('');
   const [paymentMethods, setPaymentMethods] = useState<string[]>([]);
   const [customizations, setCustomizations] = useState<CustomOption[]>([]);
   const [newMethod, setNewMethod] = useState('');
@@ -44,6 +48,10 @@ export default function SettingsPage() {
         if (res.ok) {
           const data = await res.json();
           setMaxTicket(data.maxTicketNumber);
+          setMaxPendingItemCount(data.maxPendingItemCount ?? 30);
+          setMaxItemsPerOrder(data.maxItemsPerOrder ?? 10);
+          setAcceptingOrders(data.acceptingOrders !== false);
+          setOrderStopReason(data.orderStopReason || '');
           setPaymentMethods(data.paymentMethods || []);
           setCustomizations(data.customizations || []);
         }
@@ -88,6 +96,10 @@ export default function SettingsPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           maxTicketNumber: numMaxTicket,
+          maxPendingItemCount: Number(maxPendingItemCount),
+          maxItemsPerOrder: Number(maxItemsPerOrder),
+          acceptingOrders,
+          orderStopReason,
           paymentMethods,
           customizations,
         }),
@@ -114,6 +126,19 @@ export default function SettingsPage() {
         <div className="mb-8">
           <label className="block text-gray-700 font-bold mb-2">整理番号の最大値</label>
           <input type="number" min={1} value={maxTicket} onChange={(e) => setMaxTicket(e.target.value)} className="w-full border-2 p-3 rounded-lg font-bold outline-none focus:ring-2 focus:ring-[#f3b928]" />
+        </div>
+
+        <div className={`mb-8 p-4 rounded-xl border-2 ${acceptingOrders ? 'bg-green-50 border-green-300' : 'bg-red-50 border-red-300'}`}>
+          <div className="flex items-center justify-between gap-4 mb-3">
+            <div><p className="font-black">{acceptingOrders ? '受注中' : '受注停止中'}</p><p className="text-xs text-gray-600">レジからの新規注文だけを制御します</p></div>
+            <button onClick={() => setAcceptingOrders(!acceptingOrders)} className={`px-4 py-3 rounded-lg font-black text-white ${acceptingOrders ? 'bg-red-600' : 'bg-green-600'}`}>{acceptingOrders ? '受注を停止' : '受注を再開'}</button>
+          </div>
+          <input value={orderStopReason} onChange={(e) => setOrderStopReason(e.target.value)} maxLength={200} placeholder="停止理由（例：調理が混み合っているため）" className="w-full border-2 p-3 rounded-lg" />
+        </div>
+
+        <div className="mb-8 grid grid-cols-2 gap-4">
+          <label className="font-bold">未提供本数の警告基準<input type="number" min={1} value={maxPendingItemCount} onChange={(e) => setMaxPendingItemCount(e.target.value)} className="mt-2 w-full border-2 p-3 rounded-lg" /></label>
+          <label className="font-bold">1注文の本数上限<input type="number" min={1} value={maxItemsPerOrder} onChange={(e) => setMaxItemsPerOrder(e.target.value)} className="mt-2 w-full border-2 p-3 rounded-lg" /></label>
         </div>
 
         <div className="mb-8">

@@ -3,8 +3,10 @@ import { Schema, model, models } from 'mongoose';
 const OrderSchema = new Schema({
   ownerId: { type: String, required: true, index: true },
   storeId: { type: String, required: false, index: true },
+  requestId: { type: String, required: true },
   ticketNumber: { type: String, required: true },
   items: [{
+    productId: { type: String, required: true },
     productName: { type: String, required: true },
     quantity: { type: Number, required: true },
     amount: { type: Number, required: true },
@@ -24,6 +26,10 @@ OrderSchema.index(
     unique: true,
     partialFilterExpression: { status: { $in: ['active', 'pending'] } },
   },
+);
+OrderSchema.index(
+  { storeId: 1, requestId: 1 },
+  { unique: true, partialFilterExpression: { requestId: { $type: 'string' } } },
 );
 
 if (process.env.NODE_ENV !== 'production') delete models.Order;

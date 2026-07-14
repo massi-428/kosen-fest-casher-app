@@ -21,6 +21,8 @@ type ConfirmModalProps = {
   message: string;
   onConfirm: () => void;
   onCancel: () => void;
+  confirmLabel?: string;
+  cancelLabel?: string;
 };
 
 type DetailModalProps = {
@@ -62,17 +64,17 @@ export const ResultModal = ({ isOpen, title, message, type, onClose }: ResultMod
   </BaseModal>
 );
 
-export const ConfirmModal = ({ isOpen, message, onConfirm, onCancel }: ConfirmModalProps) => (
+export const ConfirmModal = ({ isOpen, message, onConfirm, onCancel, confirmLabel = '実行する', cancelLabel = 'キャンセル' }: ConfirmModalProps) => (
   <BaseModal isOpen={isOpen} onClose={onCancel}>
     <div className="text-center mb-4 text-4xl text-yellow-500">?</div>
     <h3 className="text-xl font-bold text-gray-800 text-center mb-4">確認</h3>
     <p className="text-gray-600 text-center mb-6 whitespace-pre-wrap font-medium">{message}</p>
     <div className="flex gap-3 mt-6">
       <button onClick={onCancel} className="flex-1 py-3 bg-gray-100 text-gray-700 rounded-xl font-bold hover:bg-gray-200 transition">
-        キャンセル
+        {cancelLabel}
       </button>
       <button onClick={onConfirm} className="flex-1 py-3 bg-[#f3b928] text-gray-900 rounded-xl font-bold hover:bg-[#d6a11b] transition shadow-md">
-        実行する
+        {confirmLabel}
       </button>
     </div>
   </BaseModal>

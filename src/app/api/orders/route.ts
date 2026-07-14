@@ -1,66 +1,44 @@
 import { NextResponse } from 'next/server';
 import connectToDatabase from '@/lib/db';
 import Order from '@/models/Order';
+import Product from '@/models/Product';
 import Setting from '@/models/Setting';
 import TicketCounter from '@/models/TicketCounter';
 import { unauthorizedResponse } from '@/lib/auth';
 import { getActiveStoreContext } from '@/lib/store';
-import { badRequest, isNonEmptyString, isOptionalString, isOrderStatus, toValidPrice, toValidSignedPrice } from '@/lib/validation';
+import { badRequest, isNonEmptyString, isOptionalString } from '@/lib/validation';
 
 export const dynamic = 'force-dynamic';
 
 const DEFAULT_MAX_TICKET_NUMBER = 30;
+const DEFAULT_MAX_PENDING_ITEM_COUNT = 30;
+const DEFAULT_MAX_ITEMS_PER_ORDER = 10;
 const DUPLICATE_KEY_ERROR_CODE = 11000;
-
-type IncomingOrderOption = {
-  name?: unknown;
-  price?: unknown;
-};
+const OPEN_STATUSES = ['active', 'pending'];
 
 type IncomingOrderItem = {
-  productName?: unknown;
+  productId?: unknown;
   quantity?: unknown;
-  amount?: unknown;
   detail?: unknown;
+  selectedOptionNames?: unknown;
   selectedOptions?: unknown;
-};
-
-const getTicketConfig = async (storeId: string) => {
-  const setting = await Setting.findOne({ storeId, key: 'app_config' });
-  const maxTicketNumber = Number(setting?.maxTicketNumber || DEFAULT_MAX_TICKET_NUMBER);
-  const safeMaxTicketNumber = Number.isInteger(maxTicketNumber) && maxTicketNumber > 0 ? maxTicketNumber : DEFAULT_MAX_TICKET_NUMBER;
-  const lostTickets = Array.isArray(setting?.lostTickets)
-    ? setting.lostTickets.map((num: unknown) => Number(num)).filter((num: number) => Number.isInteger(num))
-    : [];
-
-  return { maxTicketNumber: safeMaxTicketNumber, lostTickets };
 };
 
 const issueTicketCandidate = async (storeId: string, maxTicketNumber: number) => {
   const counter = await TicketCounter.findOneAndUpdate(
     { storeId },
-    [
-      {
-        $set: {
-          storeId,
-          lastIssuedNumber: {
-            $let: {
-              vars: { nextNumber: { $add: [{ $ifNull: ['$lastIssuedNumber', 0] }, 1] } },
-              in: { $cond: [{ $gt: ['$$nextNumber', maxTicketNumber] }, 1, '$$nextNumber'] },
-            },
-          },
-        },
-      },
-    ],
+    [{ $set: { storeId, lastIssuedNumber: { $let: { vars: { nextNumber: { $add: [{ $ifNull: ['$lastIssuedNumber', 0] }, 1] } }, in: { $cond: [{ $gt: ['$$nextNumber', maxTicketNumber] }, 1, '$$nextNumber'] } } } } }],
     { new: true, upsert: true, setDefaultsOnInsert: true },
   );
-
   return String(counter.lastIssuedNumber);
 };
 
-const isDuplicateTicketError = (error: unknown) => {
-  return typeof error === 'object' && error !== null && 'code' in error && error.code === DUPLICATE_KEY_ERROR_CODE;
-};
+const isDuplicateKeyError = (error: unknown) => typeof error === 'object' && error !== null && 'code' in error && error.code === DUPLICATE_KEY_ERROR_CODE;
+
+const orderSuccess = (order: InstanceType<typeof Order>, repeated = false, warning?: Record<string, unknown>) => NextResponse.json(
+  { message: repeated ? '注文は登録済みです。' : '注文を登録しました。', order, ticketNumber: order.ticketNumber, repeated, ...(warning ? { warning } : {}) },
+  { status: repeated ? 200 : 201 },
+);
 
 export async function GET(request: Request) {
   try {
@@ -70,86 +48,125 @@ export async function GET(request: Request) {
 
     const orders = await Order.find({ storeId: context.storeId }).sort({ createdAt: -1 });
     return NextResponse.json(orders, { status: 200 });
-  } catch {
-    return NextResponse.json({ message: 'Order fetch failed' }, { status: 500 });
+  } catch (error) {
+    console.error('注文取得エラー:', error);
+    return NextResponse.json({ message: '注文情報の取得に失敗しました。' }, { status: 500 });
   }
 }
 
 export async function POST(request: Request) {
+  let reservedItemCount = 0;
+  let storeId = '';
   try {
     await connectToDatabase();
     const context = await getActiveStoreContext(request);
     if (!context) return unauthorizedResponse();
+    storeId = context.storeId;
 
     const body = await request.json();
-    const status = body.status === undefined ? 'active' : body.status;
-    const totalAmount = toValidPrice(body.totalAmount);
-    if (!Array.isArray(body.items) || body.items.length === 0 || body.items.length > 100) return badRequest('Invalid order items');
-    if (totalAmount === null || !isOrderStatus(status) || !isOptionalString(body.paymentMethod, 80) || !isOptionalString(body.note, 500)) return badRequest('Invalid order payload');
+    if (!isNonEmptyString(body.requestId, 100)) return badRequest('リクエストIDが正しくありません。');
+    const requestId = String(body.requestId).trim();
 
+    const existingOrder = await Order.findOne({ storeId, requestId });
+    if (existingOrder) return orderSuccess(existingOrder, true);
+
+    if (!Array.isArray(body.items) || body.items.length === 0 || body.items.length > 100) return badRequest('注文商品が正しくありません。');
+    if (!isNonEmptyString(body.paymentMethod, 80) || !isOptionalString(body.note, 500)) return badRequest('注文内容が正しくありません。');
+
+    const setting = await Setting.findOneAndUpdate(
+      { storeId, key: 'app_config' },
+      { $setOnInsert: { ownerId: context.userId, storeId, key: 'app_config' } },
+      { new: true, upsert: true, setDefaultsOnInsert: true },
+    );
+    const acceptingOrders = setting?.acceptingOrders !== false;
+    const orderStopReason = typeof setting?.orderStopReason === 'string' ? setting.orderStopReason : '';
+    if (!acceptingOrders) return NextResponse.json({ message: orderStopReason || '現在、新規注文の受付を停止しています。', orderStopReason }, { status: 409 });
+
+    const paymentMethods: string[] = Array.isArray(setting?.paymentMethods) ? setting.paymentMethods : [];
+    if (!paymentMethods.includes(String(body.paymentMethod))) return badRequest('選択された支払い方法は利用できません。');
+
+    const maxItemsPerOrder = Number.isInteger(setting?.maxItemsPerOrder) ? setting.maxItemsPerOrder : DEFAULT_MAX_ITEMS_PER_ORDER;
+    const requestedItemCount = (body.items as IncomingOrderItem[]).reduce((sum, item) => sum + (Number.isInteger(item?.quantity) ? Number(item.quantity) : 0), 0);
+    if ((body.items as IncomingOrderItem[]).some((item) => !Number.isInteger(item?.quantity) || Number(item.quantity) < 1) || requestedItemCount > maxItemsPerOrder) {
+      return badRequest(`数量は正の整数で入力し、1注文${maxItemsPerOrder}本以内にしてください。`);
+    }
+
+    const productIds = [...new Set((body.items as IncomingOrderItem[]).map((item) => String(item.productId || '')))];
+    if (productIds.some((id) => !id)) return badRequest('商品IDが正しくありません。');
+    const products = await Product.find({ storeId, _id: { $in: productIds } });
+    const productMap = new Map(products.map((product) => [String(product._id), product]));
+    if (productMap.size !== productIds.length) return badRequest('存在しない商品が含まれています。');
+
+    const optionMap = new Map<string, number>((Array.isArray(setting?.customizations) ? setting.customizations : []).map((option: { name: string; price: number }) => [option.name, option.price]));
     const items = (body.items as IncomingOrderItem[]).map((item) => {
-      const quantity = Number(item.quantity);
-      const amount = toValidPrice(item.amount);
-      if (!isNonEmptyString(item.productName, 120) || !Number.isInteger(quantity) || quantity < 1 || quantity > 999 || amount === null || !isOptionalString(item.detail, 300)) {
-        return null;
-      }
-
-      const selectedOptions = Array.isArray(item.selectedOptions) ? (item.selectedOptions as IncomingOrderOption[]).map((option) => {
-        const price = toValidSignedPrice(option?.price ?? 0);
-        if (!isNonEmptyString(option?.name, 80) || price === null) return null;
-        return { name: String(option.name).trim(), price };
-      }) : [];
-
-      if (selectedOptions.some((option) => option === null)) return null;
-
-      return {
-        productName: String(item.productName).trim(),
-        quantity,
-        amount,
-        detail: typeof item.detail === 'string' ? item.detail : '',
-        selectedOptions,
-      };
+      const product = productMap.get(String(item.productId));
+      if (!product || !isOptionalString(item.detail, 300)) return null;
+      const names = Array.isArray(item.selectedOptionNames)
+        ? item.selectedOptionNames
+        : Array.isArray(item.selectedOptions) ? item.selectedOptions.map((option: { name?: unknown }) => option?.name) : [];
+      if (names.some((name: unknown) => !isNonEmptyString(name, 80) || !optionMap.has(String(name)))) return null;
+      const selectedOptions = names.map((name: unknown) => ({ name: String(name), price: optionMap.get(String(name)) as number }));
+      const unitPrice = product.price + selectedOptions.reduce((sum: number, option: { price: number }) => sum + option.price, 0);
+      return { productId: String(product._id), productName: product.name, quantity: Number(item.quantity), amount: unitPrice * Number(item.quantity), detail: typeof item.detail === 'string' ? item.detail : '', selectedOptions };
     });
+    if (items.some((item) => item === null)) return badRequest('注文詳細またはオプションが正しくありません。');
+    const safeItems = items.filter((item): item is NonNullable<typeof item> => item !== null);
+    const totalAmount = safeItems.reduce((sum, item) => sum + item.amount, 0);
 
-    if (items.some((item) => item === null)) return badRequest('Invalid order details');
+    const actualPending = await Order.aggregate([
+      { $match: { storeId, status: { $in: OPEN_STATUSES } } },
+      { $unwind: '$items' },
+      { $group: { _id: null, count: { $sum: '$items.quantity' } } },
+    ]);
+    await Setting.updateOne({ storeId, key: 'app_config', pendingItemCount: { $exists: false } }, { $set: { pendingItemCount: actualPending[0]?.count || 0 } });
+    const maxPendingItemCount = Number.isInteger(setting?.maxPendingItemCount) ? setting.maxPendingItemCount : DEFAULT_MAX_PENDING_ITEM_COUNT;
+    const reservation = await Setting.findOneAndUpdate(
+      { storeId, key: 'app_config', acceptingOrders: { $ne: false } },
+      { $inc: { pendingItemCount: requestedItemCount } },
+      { new: true },
+    );
+    if (!reservation) {
+      const latest = await Setting.findOne({ storeId, key: 'app_config' });
+      if (latest?.acceptingOrders === false) return NextResponse.json({ message: latest.orderStopReason || '現在、新規注文の受付を停止しています。', orderStopReason: latest.orderStopReason || '' }, { status: 409 });
+      throw new Error('受注枠カウンターを更新できませんでした。');
+    }
+    reservedItemCount = requestedItemCount;
+    const projectedPendingItemCount = Number(reservation.pendingItemCount);
+    const currentPendingItemCount = projectedPendingItemCount - requestedItemCount;
+    const capacityWarning = projectedPendingItemCount > maxPendingItemCount ? {
+      message: '未提供本数が設定上限を超えています。調理状況を確認してください。',
+      currentPendingItemCount,
+      requestedItemCount,
+      projectedPendingItemCount,
+      maxPendingItemCount,
+    } : undefined;
 
-    const ticketConfig = await getTicketConfig(context.storeId);
-    const lostTickets = new Set(ticketConfig.lostTickets);
-    let newOrder = null;
-    let ticketNumber = '';
-
-    for (let i = 0; i < ticketConfig.maxTicketNumber; i += 1) {
-      const candidate = await issueTicketCandidate(context.storeId, ticketConfig.maxTicketNumber);
+    const maxTicketNumber = Number.isInteger(setting?.maxTicketNumber) && setting.maxTicketNumber > 0 ? setting.maxTicketNumber : DEFAULT_MAX_TICKET_NUMBER;
+    const lostTickets = new Set<number>((Array.isArray(setting?.lostTickets) ? setting.lostTickets : []).map(Number));
+    for (let i = 0; i < maxTicketNumber; i += 1) {
+      const candidate = await issueTicketCandidate(storeId, maxTicketNumber);
       if (lostTickets.has(Number(candidate))) continue;
-
-      const activeTicket = await Order.exists({ storeId: context.storeId, ticketNumber: candidate, status: { $in: ['active', 'pending'] } });
-      if (activeTicket) continue;
-
+      if (await Order.exists({ storeId, ticketNumber: candidate, status: { $in: OPEN_STATUSES } })) continue;
       try {
-        newOrder = await Order.create({
-          ownerId: context.userId,
-          storeId: context.storeId,
-          ticketNumber: candidate,
-          items,
-          totalAmount,
-          status,
-          paymentMethod: body.paymentMethod,
-          note: body.note || '',
-        });
-        ticketNumber = candidate;
-        break;
+        const order = await Order.create({ ownerId: context.userId, storeId, requestId, ticketNumber: candidate, items: safeItems, totalAmount, status: 'active', paymentMethod: body.paymentMethod, note: body.note || '' });
+        reservedItemCount = 0;
+        return orderSuccess(order, false, capacityWarning);
       } catch (error) {
-        if (isDuplicateTicketError(error)) continue;
-        throw error;
+        if (!isDuplicateKeyError(error)) throw error;
+        const repeated = await Order.findOne({ storeId, requestId });
+        if (repeated) {
+          await Setting.updateOne({ storeId, key: 'app_config' }, { $inc: { pendingItemCount: -reservedItemCount } });
+          reservedItemCount = 0;
+          return orderSuccess(repeated, true);
+        }
       }
     }
-
-    if (!newOrder || !ticketNumber) {
-      return NextResponse.json({ message: 'No ticket numbers are available' }, { status: 409 });
-    }
-
-    return NextResponse.json({ message: 'Order created', order: newOrder, ticketNumber }, { status: 201 });
-  } catch {
-    return NextResponse.json({ message: 'Order creation failed' }, { status: 500 });
+    await Setting.updateOne({ storeId, key: 'app_config' }, { $inc: { pendingItemCount: -reservedItemCount } });
+    reservedItemCount = 0;
+    return NextResponse.json({ message: '利用可能な整理券番号がありません。' }, { status: 409 });
+  } catch (error) {
+    if (reservedItemCount && storeId) await Setting.updateOne({ storeId, key: 'app_config' }, { $inc: { pendingItemCount: -reservedItemCount } }).catch(() => undefined);
+    console.error('注文登録エラー:', error);
+    return NextResponse.json({ message: '注文の登録に失敗しました。' }, { status: 500 });
   }
 }

@@ -1,6 +1,6 @@
 ﻿"use client";
 
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { HamburgerMenu as SharedHamburgerMenu } from '@/components/common/HamburgerMenu';
 import {
   ConfirmModal as SharedConfirmModal,
@@ -31,6 +31,7 @@ const apiFetch = async (url: string, options: RequestInit = {}) => {
 
 type CustomOption = { name: string; price: number };
 type OrderItem = {
+  productId: string;
   productName: string;
   price: number;
   quantity: number;
@@ -45,13 +46,19 @@ type ModalData = Partial<
 > & { index?: number };
 
 export default function OrderPage() {
-  const [, setLoading] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const requestIdRef = useRef('');
   const [products, setProducts] = useState<Product[]>([]);
   const [maxTicketNumber, setMaxTicketNumber] = useState(30);
   const [currentTicket, setCurrentTicket] = useState('1');
   const [activeTickets, setActiveTickets] = useState<number[]>([]);
   const [lostTickets, setLostTickets] = useState<number[]>([]);
   const [lastIssuedNumber, setLastIssuedNumber] = useState(0);
+  const [acceptingOrders, setAcceptingOrders] = useState(true);
+  const [orderStopReason, setOrderStopReason] = useState('');
+  const [currentPendingItemCount, setCurrentPendingItemCount] = useState(0);
+  const [maxPendingItemCount, setMaxPendingItemCount] = useState(30);
+  const [maxItemsPerOrder, setMaxItemsPerOrder] = useState(10);
   const [cartItems, setCartItems] = useState<OrderItem[]>([]);
   const [paymentMethods, setPaymentMethods] = useState<string[]>([]);
   const [customizationOptions, setCustomizationOptions] = useState<CustomOption[]>([]);
@@ -73,6 +80,8 @@ export default function OrderPage() {
     setToast({ show: true, message, type });
   };
 
+  const newRequestId = () => crypto.randomUUID();
+
   useEffect(() => {
     const checkSession = async () => {
       const res = await apiFetch('/api/me', { cache: 'no-store' });
@@ -92,6 +101,10 @@ export default function OrderPage() {
       const data = await res.json();
       setActiveTickets(data.activeTickets || []);
       setLastIssuedNumber(data.lastTicketNumber || 0);
+      setCurrentPendingItemCount(data.currentPendingItemCount || 0);
+      setMaxPendingItemCount(data.maxPendingItemCount || 30);
+      setAcceptingOrders(data.acceptingOrders !== false);
+      setOrderStopReason(data.orderStopReason || '');
     }
   }, []);
 
@@ -103,10 +116,15 @@ export default function OrderPage() {
       if (data.paymentMethods) setPaymentMethods(data.paymentMethods);
       if (data.customizations) setCustomizationOptions(data.customizations);
       if (data.lostTickets) setLostTickets(data.lostTickets);
+      setAcceptingOrders(data.acceptingOrders !== false);
+      setOrderStopReason(data.orderStopReason || '');
+      setMaxPendingItemCount(data.maxPendingItemCount || 30);
+      setMaxItemsPerOrder(data.maxItemsPerOrder || 10);
     }
   }, []);
 
   useEffect(() => {
+    requestIdRef.current = newRequestId();
     fetchProducts();
     fetchTicketStatus();
     fetchSettings();
@@ -129,9 +147,9 @@ export default function OrderPage() {
   const addToCart = (product: Product) => {
     if (isEditMode) return;
     setCartItems((prev) => {
-      const idx = prev.findIndex((item) => item.productName === product.name && !item.detail && (!item.selectedOptions || item.selectedOptions.length === 0));
+      const idx = prev.findIndex((item) => item.productId === product._id && !item.detail && (!item.selectedOptions || item.selectedOptions.length === 0));
       if (idx !== -1) return prev.map((item, i) => i === idx ? { ...item, quantity: item.quantity + 1 } : item);
-      return [...prev, { productName: product.name, price: product.price, quantity: 1, detail: '', selectedOptions: [] }];
+      return [...prev, { productId: product._id, productName: product.name, price: product.price, quantity: 1, detail: '', selectedOptions: [] }];
     });
   };
 
@@ -145,19 +163,37 @@ export default function OrderPage() {
     return sum + ((item.price + optionPrice) * item.quantity);
   }, 0);
 
+  const currentOrderItemCount = cartItems.reduce((sum, item) => sum + item.quantity, 0);
+
+  const handleOpenPayment = () => {
+    if (currentPendingItemCount + currentOrderItemCount > maxPendingItemCount) {
+      toggleModal('confirm', true, {
+        message: `現在注文が混み合っているため、提供まで時間がかかる可能性があります。\nそれでも注文を追加しますか？\n\n未提供 ${currentPendingItemCount}本 / 警告基準 ${maxPendingItemCount}本\n今回の注文 ${currentOrderItemCount}本`,
+        onConfirm: () => {
+          toggleModal('confirm', false);
+          toggleModal('payment', true);
+        },
+        confirmLabel: 'はい、注文を続ける',
+        cancelLabel: '注文に戻る',
+      });
+      return;
+    }
+    toggleModal('payment', true);
+  };
+
   const handleOrder = async (method: string) => {
+    if (isSubmitting || !acceptingOrders) return;
     toggleModal('payment', false);
-    setLoading(true);
+    setIsSubmitting(true);
+    if (!requestIdRef.current) requestIdRef.current = newRequestId();
     const orderData = {
+      requestId: requestIdRef.current,
       items: cartItems.map((item) => ({
-        productName: item.productName,
+        productId: item.productId,
         quantity: item.quantity,
-        amount: (item.price + (item.selectedOptions?.reduce((s, option) => s + option.price, 0) || 0)) * item.quantity,
         detail: item.detail,
-        selectedOptions: item.selectedOptions,
+        selectedOptionNames: item.selectedOptions?.map((option) => option.name) || [],
       })),
-      totalAmount,
-      status: 'active',
       paymentMethod: method,
       note,
     };
@@ -167,9 +203,11 @@ export default function OrderPage() {
       if (res.ok) {
         const data = await res.json().catch(() => ({}));
         const issuedTicketNumber = data.ticketNumber || data.order?.ticketNumber || currentTicket;
-        showToast(`整理番号: ${issuedTicketNumber}\n決済方法: ${method}`, 'success');
+        const capacityWarning = data.warning?.message ? `\n警告: ${data.warning.message}` : '';
+        showToast(`整理番号: ${issuedTicketNumber}\n決済方法: ${method}${capacityWarning}`, data.warning ? 'error' : 'success');
         setCartItems([]);
         setNote('');
+        requestIdRef.current = newRequestId();
         fetchTicketStatus();
       } else {
         const err = await res.json().catch(() => ({}));
@@ -178,8 +216,17 @@ export default function OrderPage() {
     } catch {
       toggleModal('result', true, { title: '通信エラー', message: 'サーバーとの通信に失敗しました', type: 'error' });
     } finally {
-      setLoading(false);
+      setIsSubmitting(false);
     }
+  };
+
+  const toggleAcceptingOrders = async () => {
+    const next = !acceptingOrders;
+    const res = await apiFetch('/api/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ acceptingOrders: next }) });
+    if (res.ok) {
+      setAcceptingOrders(next);
+      showToast(next ? '受注を再開しました' : '受注を停止しました');
+    } else showToast('受注状態を変更できませんでした', 'error');
   };
 
   const toggleLostTicket = async (num: number) => {
@@ -230,7 +277,7 @@ export default function OrderPage() {
   return (
     <div className="fixed inset-0 w-screen h-dvh bg-gray-100 overflow-hidden overscroll-none font-sans text-gray-900 flex relative">
       <SharedResultModal isOpen={modals.result} title={modalData.title || ''} message={modalData.message || ''} type={modalData.type || 'success'} onClose={() => toggleModal('result', false)} />
-      <SharedConfirmModal isOpen={modals.confirm} message={modalData.message || ''} onConfirm={modalData.onConfirm || (() => {})} onCancel={() => toggleModal('confirm', false)} />
+      <SharedConfirmModal isOpen={modals.confirm} message={modalData.message || ''} onConfirm={modalData.onConfirm || (() => {})} onCancel={() => toggleModal('confirm', false)} confirmLabel={modalData.confirmLabel} cancelLabel={modalData.cancelLabel} />
       <Toast show={toast.show} message={toast.message} type={toast.type} onClose={() => setToast((prev) => ({ ...prev, show: false }))} />
       <SharedDetailModal isOpen={modals.detail} productName={modalData.productName || ''} currentDetail={modalData.currentDetail} currentOptions={modalData.currentOptions} optionsList={customizationOptions} onSave={(detail: string, options: CustomOption[]) => {
         setCartItems((prev) => {
@@ -306,9 +353,16 @@ export default function OrderPage() {
               </div>
               <button onClick={() => toggleModal('lost', true)} className="text-[10px] bg-red-500 hover:bg-red-400 px-2 py-1.5 rounded-md font-black mr-1 border border-red-400 transition-colors shadow-sm text-white">紛失設定</button>
             </div>
+            <div className={`px-3 py-2 flex items-center justify-between gap-3 border-b ${acceptingOrders ? 'bg-green-50 text-green-800' : 'bg-red-50 text-red-800'}`}>
+              <div className="min-w-0">
+                <p className="font-black text-sm">{acceptingOrders ? '受注中' : '受注停止中'}　未提供 {currentPendingItemCount} / {maxPendingItemCount}本</p>
+                <p className="text-xs font-bold truncate">今回の注文 {currentOrderItemCount}本{!acceptingOrders ? `　${orderStopReason || '現在、新規注文の受付を停止しています。'}` : ''}</p>
+              </div>
+              <button onClick={toggleAcceptingOrders} disabled={isSubmitting} className={`shrink-0 px-3 py-2 rounded-lg text-xs font-black text-white ${acceptingOrders ? 'bg-red-600' : 'bg-green-600'}`}>{acceptingOrders ? '受注停止' : '受注再開'}</button>
+            </div>
 
             <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain touch-pan-y p-3 space-y-2 bg-gray-50/50 shadow-inner">
-              {cartItems.length === 0 ? <div className="h-full flex flex-col items-center justify-center text-gray-300 opacity-40"><p className="font-black text-sm tracking-widest uppercase">Cart is Empty</p></div> :
+              {cartItems.length === 0 ? <div className="h-full flex flex-col items-center justify-center text-gray-300 opacity-40"><p className="font-black text-sm tracking-widest">商品を選択してください</p></div> :
                 cartItems.map((item, index) => {
                   const itemOptionPrice = item.selectedOptions?.reduce((sum, option) => sum + option.price, 0) || 0;
                   return (
@@ -342,9 +396,9 @@ export default function OrderPage() {
             </div>
 
             <div className="px-6 py-2 bg-gray-50 border-t border-gray-200 flex-shrink-0">
-              <p className="text-[10px] font-black text-gray-400 mb-2 uppercase tracking-widest">Active Tickets</p>
+              <p className="text-[10px] font-black text-gray-400 mb-2 tracking-widest">使用中の整理券</p>
               <div className="flex flex-wrap gap-2 max-h-20 overflow-y-auto overscroll-contain touch-pan-y">
-                {activeTickets.length === 0 && <span className="text-xs text-gray-400 font-bold">No active orders</span>}
+                {activeTickets.length === 0 && <span className="text-xs text-gray-400 font-bold">未提供の注文はありません</span>}
                 {[...activeTickets].sort((a, b) => a - b).map((num) => (
                   <button key={num} onClick={() => toggleModal('confirm', true, { message: `${num}番の整理券を返却済みにしますか？`, onConfirm: async () => { toggleModal('confirm', false); const res = await apiFetch('/api/tickets', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ticketNumber: String(num) }) }); if (res.ok) fetchTicketStatus(); } })} className="bg-orange-100 text-orange-700 border border-orange-300 px-3 py-1 rounded-lg text-xs font-black hover:bg-orange-200 transition">{num}</button>
                 ))}
@@ -354,7 +408,7 @@ export default function OrderPage() {
             <div className="p-4 bg-white border-t-2 border-gray-100 shadow-2xl flex-shrink-0">
               <div className="flex justify-between items-end mb-4"><span className="text-gray-400 font-black uppercase tracking-[0.2em] text-xs">Total</span><span className="text-4xl font-black text-gray-900 font-mono">¥{totalAmount.toLocaleString()}</span></div>
               <textarea value={note} onChange={(e) => setNote(e.target.value)} className="w-full border-2 border-gray-100 p-3 text-sm rounded-2xl mb-4 h-12 outline-none focus:ring-2 focus:ring-[#f3b928] font-sans resize-none font-bold bg-gray-50" placeholder="備考（領収書など）" />
-              <button onClick={() => toggleModal('payment', true)} disabled={cartItems.length === 0 || currentTicket === '発券不可'} className={`w-full py-5 rounded-2xl font-black text-xl shadow-xl transition-all transform active:scale-95 ${cartItems.length === 0 || currentTicket === '発券不可' ? 'bg-gray-300 cursor-not-allowed opacity-50 text-white' : 'bg-[#f3b928] hover:bg-[#d6a11b] text-gray-900 ring-4 ring-yellow-100'}`}>注文を確定する</button>
+              <button onClick={handleOpenPayment} disabled={cartItems.length === 0 || currentTicket === '発券不可' || !acceptingOrders || isSubmitting || currentOrderItemCount > maxItemsPerOrder} className={`w-full py-5 rounded-2xl font-black text-xl shadow-xl transition-all transform active:scale-95 ${cartItems.length === 0 || currentTicket === '発券不可' || !acceptingOrders || isSubmitting ? 'bg-gray-300 cursor-not-allowed opacity-50 text-white' : 'bg-[#f3b928] hover:bg-[#d6a11b] text-gray-900 ring-4 ring-yellow-100'}`}>{isSubmitting ? '注文を送信中...' : !acceptingOrders ? '受注停止中' : '注文を確定する'}</button>
             </div>
           </>
         )}

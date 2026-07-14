@@ -16,8 +16,9 @@ export async function GET(request: Request) {
     const settings = await getSystemSettings();
     return NextResponse.json(settings, { status: 200 });
   } catch (error) {
+    console.error('システム設定取得エラー:', error);
     return NextResponse.json(
-      { message: 'System settings fetch failed', error: error instanceof Error ? error.message : 'unknown error' },
+      { message: 'システム設定の取得に失敗しました。' },
       { status: 500 },
     );
   }
@@ -33,10 +34,10 @@ export async function POST(request: Request) {
     const body = await request.json();
     const maxStores = Number(body.maxStores);
     if (!Number.isInteger(maxStores) || maxStores < 1 || maxStores > 9999) {
-      return badRequest('Invalid store limit');
+      return badRequest('店舗数上限が正しくありません。');
     }
     if (body.cancelPassword !== undefined && !isNonEmptyString(body.cancelPassword, 80)) {
-      return badRequest('Invalid cancel password');
+      return badRequest('キャンセル用パスワードが正しくありません。');
     }
 
     const settings = await getSystemSettings();
@@ -46,8 +47,9 @@ export async function POST(request: Request) {
 
     return NextResponse.json(settings, { status: 200 });
   } catch (error) {
+    console.error('システム設定保存エラー:', error);
     return NextResponse.json(
-      { message: 'System settings save failed', error: error instanceof Error ? error.message : 'unknown error' },
+      { message: 'システム設定の保存に失敗しました。' },
       { status: 500 },
     );
   }

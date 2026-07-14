@@ -12,6 +12,11 @@ const SettingSchema = new Schema({
     default: 30,
     required: true,
   },
+  maxPendingItemCount: { type: Number, default: 30, required: true },
+  maxItemsPerOrder: { type: Number, default: 10, required: true },
+  acceptingOrders: { type: Boolean, default: true, required: true },
+  orderStopReason: { type: String, default: '' },
+  pendingItemCount: { type: Number, default: 0, required: true },
   paymentMethods: {
     type: [String],
     default: ['現金', 'クレジットカード', 'PayPay', '交通系IC'],

@@ -56,7 +56,7 @@ export async function POST(request: Request) {
   } catch (error) {
     console.error('Login Error:', error);
     return NextResponse.json(
-      { message: '???????', error: error instanceof Error ? error.message : 'unknown error' },
+      { message: 'ログイン処理に失敗しました。' },
       { status: 500 },
     );
   }

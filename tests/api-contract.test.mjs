@@ -120,12 +120,53 @@ test('orders are issued ticket numbers on the server', () => {
   assert.match(ordersRoute, /TicketCounter\.findOneAndUpdate/);
   assert.match(ordersRoute, /issueTicketCandidate/);
   assert.match(ordersRoute, /DUPLICATE_KEY_ERROR_CODE/);
-  assert.match(ordersRoute, /Setting\.findOne\(\{\s*storeId,\s*key:\s*'app_config'\s*\}\)/);
-  assert.match(ordersRoute, /status:\s*\{\s*\$in:\s*\['active',\s*'pending'\]\s*\}/);
-  assert.match(ordersRoute, /No ticket numbers are available/);
+  assert.match(ordersRoute, /Setting\.findOneAndUpdate/);
+  assert.match(ordersRoute, /OPEN_STATUSES = \['active', 'pending'\]/);
+  assert.match(ordersRoute, /利用可能な整理券番号がありません/);
   assert.match(ordersRoute, /ticketNumber:\s*candidate/);
   assert.doesNotMatch(orderPage, /ticketNumber:\s*currentTicket/);
   assert.match(orderPage, /data\.ticketNumber \|\| data\.order\?\.ticketNumber/);
+});
+
+test('order creation is idempotent and prices are calculated on the server', () => {
+  const ordersRoute = read('src/app/api/orders/route.ts');
+  const orderModel = read('src/models/Order.ts');
+  const orderPage = read('src/app/order/page.tsx');
+
+  assert.match(orderModel, /requestId/);
+  assert.match(orderModel, /\{ storeId: 1, requestId: 1 \}/);
+  assert.match(orderModel, /partialFilterExpression: \{ requestId: \{ \$type: 'string' \} \}/);
+  assert.match(ordersRoute, /Order\.findOne\(\{ storeId, requestId \}\)/);
+  assert.match(ordersRoute, /Product\.find\(\{ storeId/);
+  assert.match(ordersRoute, /totalAmount = safeItems\.reduce/);
+  assert.doesNotMatch(ordersRoute, /toValidPrice\(body\.totalAmount\)/);
+  assert.match(orderPage, /crypto\.randomUUID\(\)/);
+  assert.match(orderPage, /requestId: requestIdRef\.current/);
+  assert.match(orderPage, /productId: item\.productId/);
+  assert.match(orderPage, /setIsSubmitting\(true\)/);
+  assert.match(orderPage, /requestIdRef\.current = newRequestId\(\)/);
+});
+
+test('orders enforce pending item limits and manual order acceptance', () => {
+  const ordersRoute = read('src/app/api/orders/route.ts');
+  const settingModel = read('src/models/Setting.ts');
+  const settingsPage = read('src/app/settings/page.tsx');
+
+  assert.match(settingModel, /maxPendingItemCount/);
+  assert.match(settingModel, /maxItemsPerOrder/);
+  assert.match(settingModel, /acceptingOrders/);
+  assert.match(settingModel, /orderStopReason/);
+  assert.match(ordersRoute, /status: \{ \$in: OPEN_STATUSES \}/);
+  assert.match(ordersRoute, /Setting\.findOneAndUpdate/);
+  assert.match(ordersRoute, /projectedPendingItemCount/);
+  assert.match(ordersRoute, /capacityWarning/);
+  assert.match(ordersRoute, /未提供本数が設定上限を超えています/);
+  assert.match(ordersRoute, /acceptingOrders === false/);
+  assert.match(settingsPage, /受注を停止/);
+  assert.match(settingsPage, /未提供本数の警告基準/);
+  assert.match(read('src/app/order/page.tsx'), /handleOpenPayment/);
+  assert.match(read('src/app/order/page.tsx'), /提供まで時間がかかる可能性があります/);
+  assert.match(read('src/app/order/page.tsx'), /それでも注文を追加しますか/);
 });
 
 test('admin login does not assign store context', () => {
