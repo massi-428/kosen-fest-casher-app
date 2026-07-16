@@ -17,8 +17,13 @@ const OrderSchema = new Schema({
   status: { type: String, enum: ['active', 'completed', 'pending', 'cancelled'], default: 'active' },
   paymentMethod: { type: String, required: false },
   note: { type: String, required: false, default: '' },
-  orderDate: { type: Date, default: Date.now }
+  orderDate: { type: Date, default: Date.now },
+  completedAt: { type: Date, required: false, default: null },
+  cancelledAt: { type: Date, required: false, default: null }
 }, { timestamps: true });
+
+OrderSchema.index({ storeId: 1, status: 1, completedAt: -1 });
+OrderSchema.index({ storeId: 1, createdAt: -1 });
 
 OrderSchema.index(
   { storeId: 1, ticketNumber: 1 },

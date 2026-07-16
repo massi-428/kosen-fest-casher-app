@@ -54,11 +54,10 @@ export default function OrderPage() {
   const [activeTickets, setActiveTickets] = useState<number[]>([]);
   const [lostTickets, setLostTickets] = useState<number[]>([]);
   const [lastIssuedNumber, setLastIssuedNumber] = useState(0);
-  const [acceptingOrders, setAcceptingOrders] = useState(true);
-  const [orderStopReason, setOrderStopReason] = useState('');
   const [currentPendingItemCount, setCurrentPendingItemCount] = useState(0);
   const [maxPendingItemCount, setMaxPendingItemCount] = useState(30);
   const [maxItemsPerOrder, setMaxItemsPerOrder] = useState(10);
+  const [waitInfo, setWaitInfo] = useState<{ estimatedWaitLabel: string; isEstimateReliable: boolean } | null>(null);
   const [cartItems, setCartItems] = useState<OrderItem[]>([]);
   const [paymentMethods, setPaymentMethods] = useState<string[]>([]);
   const [customizationOptions, setCustomizationOptions] = useState<CustomOption[]>([]);
@@ -69,15 +68,20 @@ export default function OrderPage() {
   const [formPrice, setFormPrice] = useState('');
   const [modals, setModals] = useState({ result: false, confirm: false, detail: false, payment: false, lost: false });
   const [modalData, setModalData] = useState<ModalData>({});
-  const [toast, setToast] = useState<{ show: boolean; message: string; type: 'success' | 'error' }>({ show: false, message: '', type: 'success' });
+  const [toast, setToast] = useState<{ show: boolean; message: string; title?: string; type: 'success' | 'error' }>({ show: false, message: '', type: 'success' });
 
   const toggleModal = (key: keyof typeof modals, val: boolean, data: ModalData = {}) => {
     setModals((prev) => ({ ...prev, [key]: val }));
     if (val) setModalData(data);
   };
 
-  const showToast = (message: string, type: 'success' | 'error' = 'success') => {
-    setToast({ show: true, message, type });
+  const closeConfirmModal = () => {
+    setModals((prev) => ({ ...prev, confirm: false }));
+    setModalData({});
+  };
+
+  const showToast = (message: string, type: 'success' | 'error' = 'success', title?: string) => {
+    setToast({ show: true, message, type, title });
   };
 
   const newRequestId = () => crypto.randomUUID();
@@ -103,8 +107,6 @@ export default function OrderPage() {
       setLastIssuedNumber(data.lastTicketNumber || 0);
       setCurrentPendingItemCount(data.currentPendingItemCount || 0);
       setMaxPendingItemCount(data.maxPendingItemCount || 30);
-      setAcceptingOrders(data.acceptingOrders !== false);
-      setOrderStopReason(data.orderStopReason || '');
     }
   }, []);
 
@@ -116,11 +118,14 @@ export default function OrderPage() {
       if (data.paymentMethods) setPaymentMethods(data.paymentMethods);
       if (data.customizations) setCustomizationOptions(data.customizations);
       if (data.lostTickets) setLostTickets(data.lostTickets);
-      setAcceptingOrders(data.acceptingOrders !== false);
-      setOrderStopReason(data.orderStopReason || '');
       setMaxPendingItemCount(data.maxPendingItemCount || 30);
       setMaxItemsPerOrder(data.maxItemsPerOrder || 10);
     }
+  }, []);
+
+  const fetchWaitTime = useCallback(async () => {
+    const res = await apiFetch('/api/wait-time', { cache: 'no-store' });
+    if (res.ok) setWaitInfo(await res.json());
   }, []);
 
   useEffect(() => {
@@ -128,9 +133,10 @@ export default function OrderPage() {
     fetchProducts();
     fetchTicketStatus();
     fetchSettings();
-    const interval = setInterval(() => { fetchTicketStatus(); fetchSettings(); }, 5000);
+    fetchWaitTime();
+    const interval = setInterval(() => { fetchTicketStatus(); fetchSettings(); fetchWaitTime(); }, 5000);
     return () => clearInterval(interval);
-  }, [fetchProducts, fetchTicketStatus, fetchSettings]);
+  }, [fetchProducts, fetchTicketStatus, fetchSettings, fetchWaitTime]);
 
   useEffect(() => {
     let nextNum = lastIssuedNumber + 1;
@@ -166,9 +172,15 @@ export default function OrderPage() {
   const currentOrderItemCount = cartItems.reduce((sum, item) => sum + item.quantity, 0);
 
   const handleOpenPayment = () => {
-    if (currentPendingItemCount + currentOrderItemCount > maxPendingItemCount) {
+    const exceedsPendingWarning = currentPendingItemCount + currentOrderItemCount > maxPendingItemCount;
+    const exceedsOrderWarning = currentOrderItemCount > maxItemsPerOrder;
+    if (exceedsPendingWarning || exceedsOrderWarning) {
+      const warningReasons = [
+        exceedsPendingWarning ? '現在注文が混み合っているため、提供まで時間がかかる可能性があります。' : '',
+        exceedsOrderWarning ? `今回の注文は想定数（${maxItemsPerOrder}）を超えています。` : '',
+      ].filter(Boolean).join('\n');
       toggleModal('confirm', true, {
-        message: `現在注文が混み合っているため、提供まで時間がかかる可能性があります。\nそれでも注文を追加しますか？\n\n未提供 ${currentPendingItemCount}本 / 警告基準 ${maxPendingItemCount}本\n今回の注文 ${currentOrderItemCount}本`,
+        message: `${warningReasons}\nそれでも注文を追加しますか？\n\n未提供 ${currentPendingItemCount} / 警告基準 ${maxPendingItemCount}\n今回の注文 ${currentOrderItemCount}`,
         onConfirm: () => {
           toggleModal('confirm', false);
           toggleModal('payment', true);
@@ -182,7 +194,7 @@ export default function OrderPage() {
   };
 
   const handleOrder = async (method: string) => {
-    if (isSubmitting || !acceptingOrders) return;
+    if (isSubmitting) return;
     toggleModal('payment', false);
     setIsSubmitting(true);
     if (!requestIdRef.current) requestIdRef.current = newRequestId();
@@ -203,8 +215,8 @@ export default function OrderPage() {
       if (res.ok) {
         const data = await res.json().catch(() => ({}));
         const issuedTicketNumber = data.ticketNumber || data.order?.ticketNumber || currentTicket;
-        const capacityWarning = data.warning?.message ? `\n警告: ${data.warning.message}` : '';
-        showToast(`整理番号: ${issuedTicketNumber}\n決済方法: ${method}${capacityWarning}`, data.warning ? 'error' : 'success');
+        const capacityNotice = data.warning?.message ? `\n警告: ${data.warning.message}` : '';
+        showToast(`注文を登録しました\n整理番号: ${issuedTicketNumber}\n決済方法: ${method}${capacityNotice}`, 'success');
         setCartItems([]);
         setNote('');
         requestIdRef.current = newRequestId();
@@ -218,15 +230,6 @@ export default function OrderPage() {
     } finally {
       setIsSubmitting(false);
     }
-  };
-
-  const toggleAcceptingOrders = async () => {
-    const next = !acceptingOrders;
-    const res = await apiFetch('/api/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ acceptingOrders: next }) });
-    if (res.ok) {
-      setAcceptingOrders(next);
-      showToast(next ? '受注を再開しました' : '受注を停止しました');
-    } else showToast('受注状態を変更できませんでした', 'error');
   };
 
   const toggleLostTicket = async (num: number) => {
@@ -247,7 +250,7 @@ export default function OrderPage() {
         setEditingProduct(null);
         setFormName('');
         setFormPrice('');
-        showToast('商品を保存しました', 'success');
+        showToast('商品を保存しました', 'success', '変更完了');
       } else {
         const errData = await res.json().catch(() => ({}));
         toggleModal('result', true, { title: '保存エラー', message: errData.message || '保存できませんでした', type: 'error' });
@@ -267,7 +270,7 @@ export default function OrderPage() {
         setEditingProduct(null);
         setFormName('');
         setFormPrice('');
-        showToast('商品を削除しました', 'success');
+        showToast('商品を削除しました', 'success', '変更完了');
       } else {
         toggleModal('result', true, { title: 'エラー', message: '削除に失敗しました', type: 'error' });
       }
@@ -277,8 +280,8 @@ export default function OrderPage() {
   return (
     <div className="fixed inset-0 w-screen h-dvh bg-gray-100 overflow-hidden overscroll-none font-sans text-gray-900 flex relative">
       <SharedResultModal isOpen={modals.result} title={modalData.title || ''} message={modalData.message || ''} type={modalData.type || 'success'} onClose={() => toggleModal('result', false)} />
-      <SharedConfirmModal isOpen={modals.confirm} message={modalData.message || ''} onConfirm={modalData.onConfirm || (() => {})} onCancel={() => toggleModal('confirm', false)} confirmLabel={modalData.confirmLabel} cancelLabel={modalData.cancelLabel} />
-      <Toast show={toast.show} message={toast.message} type={toast.type} onClose={() => setToast((prev) => ({ ...prev, show: false }))} />
+      <SharedConfirmModal isOpen={modals.confirm} message={modalData.message || ''} onConfirm={modalData.onConfirm || (() => {})} onCancel={closeConfirmModal} confirmLabel={modalData.confirmLabel} cancelLabel={modalData.cancelLabel} />
+      <Toast show={toast.show} message={toast.message} title={toast.title} type={toast.type} onClose={() => setToast((prev) => ({ ...prev, show: false }))} />
       <SharedDetailModal isOpen={modals.detail} productName={modalData.productName || ''} currentDetail={modalData.currentDetail} currentOptions={modalData.currentOptions} optionsList={customizationOptions} onSave={(detail: string, options: CustomOption[]) => {
         setCartItems((prev) => {
           const targetIndex = modalData.index ?? -1;
@@ -297,7 +300,10 @@ export default function OrderPage() {
 
       <div className="w-3/5 flex flex-col h-full min-h-0 bg-white border-r overflow-hidden">
         <div className="p-4 flex justify-between items-center border-b shadow-sm flex-shrink-0">
-          <h2 className="text-xl font-bold text-gray-700">{isEditMode ? 'メニュー編集' : '商品メニュー'}</h2>
+          <div>
+            <h2 className="text-xl font-bold text-gray-700">{isEditMode ? 'メニュー編集' : '商品メニュー'}</h2>
+            {waitInfo && <p className="text-sm font-bold text-blue-700">現在の待ち時間目安: {waitInfo.estimatedWaitLabel}{!waitInfo.isEstimateReliable && <span className="ml-2 text-xs text-gray-500">（参考値）</span>}</p>}
+          </div>
           <div className="flex items-center gap-3">
             <button onClick={() => setIsEditMode(!isEditMode)} className={`px-4 py-2 rounded-full font-bold text-sm transition-all shadow-sm ${isEditMode ? 'bg-red-500 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
               {isEditMode ? '終了' : '商品管理'}
@@ -353,12 +359,11 @@ export default function OrderPage() {
               </div>
               <button onClick={() => toggleModal('lost', true)} className="text-[10px] bg-red-500 hover:bg-red-400 px-2 py-1.5 rounded-md font-black mr-1 border border-red-400 transition-colors shadow-sm text-white">紛失設定</button>
             </div>
-            <div className={`px-3 py-2 flex items-center justify-between gap-3 border-b ${acceptingOrders ? 'bg-green-50 text-green-800' : 'bg-red-50 text-red-800'}`}>
+            <div className="px-3 py-2 border-b bg-green-50 text-green-800">
               <div className="min-w-0">
-                <p className="font-black text-sm">{acceptingOrders ? '受注中' : '受注停止中'}　未提供 {currentPendingItemCount} / {maxPendingItemCount}本</p>
-                <p className="text-xs font-bold truncate">今回の注文 {currentOrderItemCount}本{!acceptingOrders ? `　${orderStopReason || '現在、新規注文の受付を停止しています。'}` : ''}</p>
+                <p className="font-black text-sm">未提供 {currentPendingItemCount} / {maxPendingItemCount}</p>
+                <p className="text-xs font-bold truncate">今回の注文 {currentOrderItemCount}</p>
               </div>
-              <button onClick={toggleAcceptingOrders} disabled={isSubmitting} className={`shrink-0 px-3 py-2 rounded-lg text-xs font-black text-white ${acceptingOrders ? 'bg-red-600' : 'bg-green-600'}`}>{acceptingOrders ? '受注停止' : '受注再開'}</button>
             </div>
 
             <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain touch-pan-y p-3 space-y-2 bg-gray-50/50 shadow-inner">
@@ -408,7 +413,7 @@ export default function OrderPage() {
             <div className="p-4 bg-white border-t-2 border-gray-100 shadow-2xl flex-shrink-0">
               <div className="flex justify-between items-end mb-4"><span className="text-gray-400 font-black uppercase tracking-[0.2em] text-xs">Total</span><span className="text-4xl font-black text-gray-900 font-mono">¥{totalAmount.toLocaleString()}</span></div>
               <textarea value={note} onChange={(e) => setNote(e.target.value)} className="w-full border-2 border-gray-100 p-3 text-sm rounded-2xl mb-4 h-12 outline-none focus:ring-2 focus:ring-[#f3b928] font-sans resize-none font-bold bg-gray-50" placeholder="備考（領収書など）" />
-              <button onClick={handleOpenPayment} disabled={cartItems.length === 0 || currentTicket === '発券不可' || !acceptingOrders || isSubmitting || currentOrderItemCount > maxItemsPerOrder} className={`w-full py-5 rounded-2xl font-black text-xl shadow-xl transition-all transform active:scale-95 ${cartItems.length === 0 || currentTicket === '発券不可' || !acceptingOrders || isSubmitting ? 'bg-gray-300 cursor-not-allowed opacity-50 text-white' : 'bg-[#f3b928] hover:bg-[#d6a11b] text-gray-900 ring-4 ring-yellow-100'}`}>{isSubmitting ? '注文を送信中...' : !acceptingOrders ? '受注停止中' : '注文を確定する'}</button>
+              <button onClick={handleOpenPayment} disabled={cartItems.length === 0 || currentTicket === '発券不可' || isSubmitting} className={`w-full py-5 rounded-2xl font-black text-xl shadow-xl transition-all transform active:scale-95 ${cartItems.length === 0 || currentTicket === '発券不可' || isSubmitting ? 'bg-gray-300 cursor-not-allowed opacity-50 text-white' : 'bg-[#f3b928] hover:bg-[#d6a11b] text-gray-900 ring-4 ring-yellow-100'}`}>{isSubmitting ? '注文を送信中...' : '注文を確定する'}</button>
             </div>
           </>
         )}

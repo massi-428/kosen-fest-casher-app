@@ -89,8 +89,13 @@ test('cancelled tickets require the admin cancel password', () => {
   assert.match(ticketsRoute, /getCancelPassword\(\)/);
   assert.match(ticketsRoute, /newStatus === 'cancelled'/);
   assert.match(ticketsRoute, /status: 403/);
-  assert.match(historyPage, /window\.prompt/);
+  assert.match(ticketsRoute, /if \(!updatedOrder\)/);
+  assert.match(ticketsRoute, /対象の注文が見つかりません/);
+  assert.doesNotMatch(historyPage, /window\.prompt/);
   assert.match(historyPage, /cancelPassword/);
+  assert.match(historyPage, /キャンセル完了/);
+  assert.match(historyPage, /submitCancelOrder/);
+  assert.match(historyPage, /キャンセル用パスワードを入力してください/);
 });
 
 test('store data is scoped by storeId in core APIs', () => {
@@ -147,26 +152,30 @@ test('order creation is idempotent and prices are calculated on the server', () 
   assert.match(orderPage, /requestIdRef\.current = newRequestId\(\)/);
 });
 
-test('orders enforce pending item limits and manual order acceptance', () => {
+test('orders track pending item warning thresholds', () => {
   const ordersRoute = read('src/app/api/orders/route.ts');
   const settingModel = read('src/models/Setting.ts');
   const settingsPage = read('src/app/settings/page.tsx');
 
   assert.match(settingModel, /maxPendingItemCount/);
   assert.match(settingModel, /maxItemsPerOrder/);
-  assert.match(settingModel, /acceptingOrders/);
-  assert.match(settingModel, /orderStopReason/);
+  assert.doesNotMatch(settingModel, /acceptingOrders/);
+  assert.doesNotMatch(settingModel, /orderStopReason/);
   assert.match(ordersRoute, /status: \{ \$in: OPEN_STATUSES \}/);
   assert.match(ordersRoute, /Setting\.findOneAndUpdate/);
   assert.match(ordersRoute, /projectedPendingItemCount/);
   assert.match(ordersRoute, /capacityWarning/);
-  assert.match(ordersRoute, /未提供本数が設定上限を超えています/);
-  assert.match(ordersRoute, /acceptingOrders === false/);
-  assert.match(settingsPage, /受注を停止/);
-  assert.match(settingsPage, /未提供本数の警告基準/);
+  assert.match(ordersRoute, /未提供数が警告基準を超えています/);
+  assert.doesNotMatch(ordersRoute, /acceptingOrders/);
+  assert.doesNotMatch(settingsPage, /受注を停止/);
+  assert.match(settingsPage, /未提供数の警告基準/);
   assert.match(read('src/app/order/page.tsx'), /handleOpenPayment/);
   assert.match(read('src/app/order/page.tsx'), /提供まで時間がかかる可能性があります/);
   assert.match(read('src/app/order/page.tsx'), /それでも注文を追加しますか/);
+  assert.match(read('src/app/order/page.tsx'), /今回の注文は想定数/);
+  assert.doesNotMatch(read('src/app/order/page.tsx'), /currentOrderItemCount > maxItemsPerOrder\}/);
+  assert.match(read('src/app/order/page.tsx'), /警告: \$\{data\.warning\.message\}/);
+  assert.doesNotMatch(read('src/app/order/page.tsx'), /data\.warning \? 'error' : 'success'/);
 });
 
 test('admin login does not assign store context', () => {

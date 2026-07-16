@@ -26,7 +26,7 @@ export async function GET(request: Request) {
       { $set: { pendingItemCount: currentPendingItemCount } },
       { new: true },
     );
-    return NextResponse.json({ activeTickets, lastTicketNumber, currentPendingItemCount, maxPendingItemCount: setting?.maxPendingItemCount ?? 30, acceptingOrders: setting?.acceptingOrders !== false, orderStopReason: setting?.orderStopReason || '' }, { status: 200 });
+    return NextResponse.json({ activeTickets, lastTicketNumber, currentPendingItemCount, maxPendingItemCount: setting?.maxPendingItemCount ?? 30 }, { status: 200 });
   } catch {
     return NextResponse.json({ message: '整理券情報の取得に失敗しました。' }, { status: 500 });
   }
@@ -49,18 +49,38 @@ export async function PUT(request: Request) {
       }
     }
 
+    const timestampUpdate = newStatus === 'cancelled'
+      ? { cancelledAt: new Date() }
+      : { cancelledAt: null };
+
     if (orderId) {
       if (!isValidObjectId(orderId)) return badRequest('注文IDが正しくありません。');
-      await Order.findOneAndUpdate({ _id: orderId, storeId: context.storeId }, { status: newStatus }, { runValidators: true });
+      const existingOrder = await Order.findOne({ _id: orderId, storeId: context.storeId }).select('completedAt');
+      if (!existingOrder) return NextResponse.json({ message: '対象の注文が見つかりません。' }, { status: 404 });
+      const updatedOrder = await Order.findOneAndUpdate(
+        { _id: orderId, storeId: context.storeId },
+        newStatus === 'completed'
+          ? { $set: { status: newStatus, cancelledAt: null, completedAt: existingOrder.completedAt ?? new Date() } }
+          : { $set: { status: newStatus, ...timestampUpdate } },
+        { new: true },
+      );
+      if (!updatedOrder) return NextResponse.json({ message: '対象の注文が見つかりません。' }, { status: 404 });
     } else {
       if (!isNonEmptyString(String(ticketNumber || ''), 20)) return badRequest('整理券番号が正しくありません。');
-      await Order.updateMany({ storeId: context.storeId, ticketNumber: String(ticketNumber), status: { $ne: 'completed' } }, { $set: { status: newStatus } }, { runValidators: true });
+      const result = await Order.updateMany(
+        { storeId: context.storeId, ticketNumber: String(ticketNumber), status: { $ne: 'completed' } },
+        newStatus === 'completed'
+          ? { $set: { status: newStatus, cancelledAt: null, completedAt: new Date() } }
+          : { $set: { status: newStatus, ...timestampUpdate } },
+      );
+      if (result.matchedCount === 0) return NextResponse.json({ message: '対象の注文が見つかりません。' }, { status: 404 });
     }
 
     const remaining = await Order.aggregate([{ $match: { storeId: context.storeId, status: { $in: ['active', 'pending'] } } }, { $unwind: '$items' }, { $group: { _id: null, count: { $sum: '$items.quantity' } } }]);
     await Setting.updateOne({ storeId: context.storeId, key: 'app_config' }, { $set: { pendingItemCount: remaining[0]?.count || 0 } });
     return NextResponse.json({ message: '注文状態を更新しました。' }, { status: 200 });
-  } catch {
+  } catch (error) {
+    console.error('注文状態更新エラー:', error);
     return NextResponse.json({ message: '注文状態の更新に失敗しました。' }, { status: 500 });
   }
 }

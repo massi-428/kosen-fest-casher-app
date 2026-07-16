@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { ConfirmModal as SharedConfirmModal, ResultModal as SharedResultModal } from '@/components/order/OrderModals';
+import { BaseModal } from '@/components/BaseModal';
 
 // --- ユーティリティ ---
 const useRouter = () => ({ push: (path: string) => { if (typeof window !== 'undefined') window.location.href = path; } });
@@ -18,7 +19,7 @@ const apiFetch = async (url: string, options: RequestInit = {}) => {
 // --- 型定義 ---
 type CustomOption = { name: string; price: number; };
 type OrderItem = { productName: string; quantity: number; amount: number; detail?: string; selectedOptions?: CustomOption[]; };
-type Order = { _id: string; ticketNumber: string; items: OrderItem[]; totalAmount: number; status: 'active' | 'completed' | 'cancelled'; paymentMethod?: string; note?: string; createdAt: string; };
+type Order = { _id: string; ticketNumber: string; items: OrderItem[]; totalAmount: number; status: 'active' | 'completed' | 'cancelled'; paymentMethod?: string; note?: string; createdAt: string; completedAt?: string | null; };
 type OrderStatusFilter = 'all' | Order['status'];
 type ModalData = Partial<
   React.ComponentProps<typeof SharedResultModal> &
@@ -33,6 +34,10 @@ export default function HistoryPage() {
   const [, setLoading] = useState(true);
   const [filterStatus, setFilterStatus] = useState<OrderStatusFilter>('all');
   const [, setLastUpdated] = useState<string>("");
+  const [cancelTarget, setCancelTarget] = useState<Order | null>(null);
+  const [cancelPassword, setCancelPassword] = useState('');
+  const [cancelError, setCancelError] = useState('');
+  const [isCancelling, setIsCancelling] = useState(false);
 
   // モーダル管理ステート
   const [modals, setModals] = useState({ result: false, confirm: false });
@@ -73,24 +78,47 @@ export default function HistoryPage() {
   };
 
   const handleCancelOrder = (order: Order) => {
-    const cancelPassword = window.prompt('\u30ad\u30e3\u30f3\u30bb\u30eb\u7528\u30d1\u30b9\u30ef\u30fc\u30c9\u3092\u5165\u529b\u3057\u3066\u304f\u3060\u3055\u3044');
-    if (cancelPassword === null) return;
+    setCancelTarget(order);
+    setCancelPassword('');
+    setCancelError('');
+  };
 
-    toggleModal('confirm', true, {
-      message: `${order.ticketNumber}番の注文をキャンセル（返金）扱いにしますか？\n※この操作は取り消せません。`,
-      onConfirm: async () => {
-        toggleModal('confirm', false);
-        setOrders(prev => prev.map(o => o._id === order._id ? { ...o, status: 'cancelled' } : o));
-        try {
-          const res = await apiFetch('/api/tickets', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ticketNumber: order.ticketNumber, orderId: order._id, status: 'cancelled', cancelPassword }) });
-          if (!res.ok) {
-            const data = await res.json().catch(() => ({}));
-            toggleModal('result', true, { title: '\u30ad\u30e3\u30f3\u30bb\u30eb\u5931\u6557', message: data.message || '\u30ad\u30e3\u30f3\u30bb\u30eb\u3067\u304d\u307e\u305b\u3093\u3067\u3057\u305f', type: 'error' });
-          }
-          setTimeout(fetchOrders, 500);
-        } catch { fetchOrders(); }
+  const closeCancelModal = () => {
+    if (isCancelling) return;
+    setCancelTarget(null);
+    setCancelPassword('');
+    setCancelError('');
+  };
+
+  const submitCancelOrder = async () => {
+    if (!cancelTarget || isCancelling) return;
+    if (!cancelPassword.trim()) {
+      setCancelError('キャンセル用パスワードを入力してください。');
+      return;
+    }
+    setIsCancelling(true);
+    setCancelError('');
+    try {
+      const res = await apiFetch('/api/tickets', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ticketNumber: cancelTarget.ticketNumber, orderId: cancelTarget._id, status: 'cancelled', cancelPassword }) });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setCancelError(data.message || '注文をキャンセルできませんでした。');
+        await fetchOrders();
+        return;
       }
-    });
+      const completedTicketNumber = cancelTarget.ticketNumber;
+      setOrders(prev => prev.map(o => o._id === cancelTarget._id ? { ...o, status: 'cancelled' } : o));
+      setCancelTarget(null);
+      setCancelPassword('');
+      toggleModal('result', true, { title: 'キャンセル完了', message: `${completedTicketNumber}番の注文をキャンセルしました。`, type: 'success' });
+      await fetchOrders();
+    } catch (error) {
+      console.error('注文キャンセルエラー:', error);
+      setCancelError('通信エラーが発生しました。再度お試しください。');
+      await fetchOrders();
+    } finally {
+      setIsCancelling(false);
+    }
   };
 
   const filteredOrders = useMemo(() => {
@@ -117,7 +145,18 @@ export default function HistoryPage() {
       
       {/* モーダル */}
       <SharedResultModal isOpen={modals.result} title={modalData.title || ''} message={modalData.message || ''} type={modalData.type || 'success'} onClose={() => toggleModal('result', false)} />
-      <SharedConfirmModal isOpen={modals.confirm} message={modalData.message || ''} onConfirm={modalData.onConfirm || (() => {})} onCancel={() => toggleModal('confirm', false)} />
+      <SharedConfirmModal isOpen={modals.confirm} message={modalData.message || ''} onConfirm={modalData.onConfirm || (() => {})} onCancel={() => toggleModal('confirm', false)} confirmLabel={modalData.confirmLabel} cancelLabel={modalData.cancelLabel} />
+      <BaseModal isOpen={cancelTarget !== null} onClose={closeCancelModal} closeOnOverlayClick={!isCancelling}>
+        <h3 className="text-xl font-bold text-gray-800 text-center mb-3">注文のキャンセル</h3>
+        <p className="text-gray-600 text-center mb-4">{cancelTarget?.ticketNumber}番の注文をキャンセル（返金）扱いにします。<br />この操作は取り消せません。</p>
+        <label className="block text-sm font-bold text-gray-700 mb-2" htmlFor="cancel-password">キャンセル用パスワード</label>
+        <input id="cancel-password" type="password" value={cancelPassword} onChange={(event) => { setCancelPassword(event.target.value); setCancelError(''); }} onKeyDown={(event) => { if (event.key === 'Enter') void submitCancelOrder(); }} autoFocus disabled={isCancelling} className="w-full border-2 border-gray-200 p-3 rounded-xl outline-none focus:ring-2 focus:ring-red-400" />
+        {cancelError && <p className="mt-3 text-sm font-bold text-red-600 bg-red-50 border border-red-200 rounded-lg p-3">{cancelError}</p>}
+        <div className="flex gap-3 mt-6">
+          <button type="button" onClick={closeCancelModal} disabled={isCancelling} className="flex-1 py-3 bg-gray-100 text-gray-700 rounded-xl font-bold disabled:opacity-50">戻る</button>
+          <button type="button" onClick={() => void submitCancelOrder()} disabled={isCancelling || !cancelPassword.trim()} className="flex-1 py-3 bg-red-600 text-white rounded-xl font-bold disabled:opacity-50">{isCancelling ? '処理中...' : 'キャンセルする'}</button>
+        </div>
+      </BaseModal>
 
       <div className="flex justify-between items-center mb-6 bg-white p-4 rounded-xl shadow-md">
         <h1 className="text-3xl font-bold text-gray-800">注文履歴と管理</h1>
@@ -163,7 +202,11 @@ export default function HistoryPage() {
             {filteredOrders.map((order) => (
               <tr key={order._id} className={order.status === 'active' ? 'bg-yellow-50' : order.status === 'cancelled' ? 'bg-gray-100 opacity-70' : 'hover:bg-gray-50 transition-colors'}>
                 <td className="px-6 py-4 font-bold text-xl">{order.ticketNumber}</td>
-                <td className="px-6 py-4 text-sm text-gray-500">{new Date(order.createdAt).toLocaleString()}</td>
+                <td className="px-6 py-4 text-sm text-gray-500">
+                  <div>受付: {new Date(order.createdAt).toLocaleString()}</div>
+                  {order.status === 'completed' && <div>提供: {order.completedAt ? new Date(order.completedAt).toLocaleString() : '記録なし'}</div>}
+                  {order.status === 'completed' && order.completedAt && <div className="font-bold text-blue-700">所要: {Math.max(1, Math.round((new Date(order.completedAt).getTime() - new Date(order.createdAt).getTime()) / 60000))}分</div>}
+                </td>
                 <td className="px-6 py-4 text-sm">
                   <ul className="list-disc pl-4 space-y-0.5">
                     {order.items.map((item, idx) => <li key={idx} className={order.status === 'cancelled' ? 'text-gray-400' : ''}>{item.productName} × {item.quantity}</li>)}

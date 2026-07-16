@@ -11,8 +11,11 @@ type SettingUpdateData = {
   maxTicketNumber?: number;
   maxPendingItemCount?: number;
   maxItemsPerOrder?: number;
-  acceptingOrders?: boolean;
-  orderStopReason?: string;
+  defaultThroughputPerMinute?: number;
+  waitTimeRecentWindowMinutes?: number;
+  waitTimeMinimumCompletedItemCount?: number;
+  waitTimeWarningMinutes?: number;
+  waitTimeCriticalMinutes?: number;
   paymentMethods?: string[];
   customizations?: { name: string; price: number }[];
   lostTickets?: number[];
@@ -31,9 +34,12 @@ const defaultSetting = (userId: string, storeId: string) => ({
   maxTicketNumber: 30,
   maxPendingItemCount: 30,
   maxItemsPerOrder: 10,
-  acceptingOrders: true,
-  orderStopReason: '',
   pendingItemCount: 0,
+  defaultThroughputPerMinute: 1.5,
+  waitTimeRecentWindowMinutes: 30,
+  waitTimeMinimumCompletedItemCount: 10,
+  waitTimeWarningMinutes: 15,
+  waitTimeCriticalMinutes: 30,
   paymentMethods: ['現金', 'クレジットカード', 'PayPay', '交通系IC'],
   customizations: [
     { name: '氷少なめ', price: 0 },
@@ -85,24 +91,28 @@ export async function POST(request: Request) {
 
     if (body.maxPendingItemCount !== undefined) {
       const value = Number(body.maxPendingItemCount);
-      if (!Number.isInteger(value) || value < 1 || value > 9999) return badRequest('未提供本数上限が不正です。');
+      if (!Number.isInteger(value) || value < 1 || value > 9999) return badRequest('未提供数の警告基準が不正です。');
       updateData.maxPendingItemCount = value;
     }
 
     if (body.maxItemsPerOrder !== undefined) {
       const value = Number(body.maxItemsPerOrder);
-      if (!Number.isInteger(value) || value < 1 || value > 999) return badRequest('1注文の本数上限が不正です。');
+      if (!Number.isInteger(value) || value < 1 || value > 999) return badRequest('1注文あたりの警告基準が不正です。');
       updateData.maxItemsPerOrder = value;
     }
 
-    if (body.acceptingOrders !== undefined) {
-      if (typeof body.acceptingOrders !== 'boolean') return badRequest('受注状態が不正です。');
-      updateData.acceptingOrders = body.acceptingOrders;
-    }
-
-    if (body.orderStopReason !== undefined) {
-      if (typeof body.orderStopReason !== 'string' || body.orderStopReason.length > 200) return badRequest('受注停止理由が不正です。');
-      updateData.orderStopReason = body.orderStopReason.trim();
+    const numericSettings: Array<[keyof SettingUpdateData, number, number]> = [
+      ['defaultThroughputPerMinute', 0.01, 100],
+      ['waitTimeRecentWindowMinutes', 1, 1440],
+      ['waitTimeMinimumCompletedItemCount', 1, 10000],
+      ['waitTimeWarningMinutes', 1, 1440],
+      ['waitTimeCriticalMinutes', 1, 1440],
+    ];
+    for (const [key, minimum, maximum] of numericSettings) {
+      if (body[key] === undefined) continue;
+      const value = Number(body[key]);
+      if (!Number.isFinite(value) || value < minimum || value > maximum) return badRequest('待ち時間設定の値が不正です。');
+      (updateData as Record<string, unknown>)[key] = value;
     }
 
     if (body.paymentMethods) {

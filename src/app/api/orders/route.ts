@@ -78,17 +78,13 @@ export async function POST(request: Request) {
       { $setOnInsert: { ownerId: context.userId, storeId, key: 'app_config' } },
       { new: true, upsert: true, setDefaultsOnInsert: true },
     );
-    const acceptingOrders = setting?.acceptingOrders !== false;
-    const orderStopReason = typeof setting?.orderStopReason === 'string' ? setting.orderStopReason : '';
-    if (!acceptingOrders) return NextResponse.json({ message: orderStopReason || '現在、新規注文の受付を停止しています。', orderStopReason }, { status: 409 });
-
     const paymentMethods: string[] = Array.isArray(setting?.paymentMethods) ? setting.paymentMethods : [];
     if (!paymentMethods.includes(String(body.paymentMethod))) return badRequest('選択された支払い方法は利用できません。');
 
     const maxItemsPerOrder = Number.isInteger(setting?.maxItemsPerOrder) ? setting.maxItemsPerOrder : DEFAULT_MAX_ITEMS_PER_ORDER;
     const requestedItemCount = (body.items as IncomingOrderItem[]).reduce((sum, item) => sum + (Number.isInteger(item?.quantity) ? Number(item.quantity) : 0), 0);
-    if ((body.items as IncomingOrderItem[]).some((item) => !Number.isInteger(item?.quantity) || Number(item.quantity) < 1) || requestedItemCount > maxItemsPerOrder) {
-      return badRequest(`数量は正の整数で入力し、1注文${maxItemsPerOrder}本以内にしてください。`);
+    if ((body.items as IncomingOrderItem[]).some((item) => !Number.isInteger(item?.quantity) || Number(item.quantity) < 1)) {
+      return badRequest('数量は正の整数で入力してください。');
     }
 
     const productIds = [...new Set((body.items as IncomingOrderItem[]).map((item) => String(item.productId || '')))];
@@ -121,24 +117,29 @@ export async function POST(request: Request) {
     await Setting.updateOne({ storeId, key: 'app_config', pendingItemCount: { $exists: false } }, { $set: { pendingItemCount: actualPending[0]?.count || 0 } });
     const maxPendingItemCount = Number.isInteger(setting?.maxPendingItemCount) ? setting.maxPendingItemCount : DEFAULT_MAX_PENDING_ITEM_COUNT;
     const reservation = await Setting.findOneAndUpdate(
-      { storeId, key: 'app_config', acceptingOrders: { $ne: false } },
+      { storeId, key: 'app_config' },
       { $inc: { pendingItemCount: requestedItemCount } },
       { new: true },
     );
     if (!reservation) {
-      const latest = await Setting.findOne({ storeId, key: 'app_config' });
-      if (latest?.acceptingOrders === false) return NextResponse.json({ message: latest.orderStopReason || '現在、新規注文の受付を停止しています。', orderStopReason: latest.orderStopReason || '' }, { status: 409 });
       throw new Error('受注枠カウンターを更新できませんでした。');
     }
     reservedItemCount = requestedItemCount;
     const projectedPendingItemCount = Number(reservation.pendingItemCount);
     const currentPendingItemCount = projectedPendingItemCount - requestedItemCount;
-    const capacityWarning = projectedPendingItemCount > maxPendingItemCount ? {
-      message: '未提供本数が設定上限を超えています。調理状況を確認してください。',
+    const exceedsPendingWarning = projectedPendingItemCount > maxPendingItemCount;
+    const exceedsOrderWarning = requestedItemCount > maxItemsPerOrder;
+    const capacityWarning = exceedsPendingWarning || exceedsOrderWarning ? {
+      message: exceedsPendingWarning && exceedsOrderWarning
+        ? '未提供数と今回の注文数が警告基準を超えています。調理状況を確認してください。'
+        : exceedsPendingWarning
+          ? '未提供数が警告基準を超えています。調理状況を確認してください。'
+          : '今回の注文数が警告基準を超えています。内容を確認してください。',
       currentPendingItemCount,
       requestedItemCount,
       projectedPendingItemCount,
       maxPendingItemCount,
+      maxItemsPerOrder,
     } : undefined;
 
     const maxTicketNumber = Number.isInteger(setting?.maxTicketNumber) && setting.maxTicketNumber > 0 ? setting.maxTicketNumber : DEFAULT_MAX_TICKET_NUMBER;

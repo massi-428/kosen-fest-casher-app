@@ -70,10 +70,10 @@ export const ConfirmModal = ({ isOpen, message, onConfirm, onCancel, confirmLabe
     <h3 className="text-xl font-bold text-gray-800 text-center mb-4">確認</h3>
     <p className="text-gray-600 text-center mb-6 whitespace-pre-wrap font-medium">{message}</p>
     <div className="flex gap-3 mt-6">
-      <button onClick={onCancel} className="flex-1 py-3 bg-gray-100 text-gray-700 rounded-xl font-bold hover:bg-gray-200 transition">
+      <button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); onCancel(); }} className="flex-1 py-3 bg-gray-100 text-gray-700 rounded-xl font-bold hover:bg-gray-200 transition">
         {cancelLabel}
       </button>
-      <button onClick={onConfirm} className="flex-1 py-3 bg-[#f3b928] text-gray-900 rounded-xl font-bold hover:bg-[#d6a11b] transition shadow-md">
+      <button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); onConfirm(); }} className="flex-1 py-3 bg-[#f3b928] text-gray-900 rounded-xl font-bold hover:bg-[#d6a11b] transition shadow-md">
         {confirmLabel}
       </button>
     </div>

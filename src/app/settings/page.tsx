@@ -23,8 +23,11 @@ export default function SettingsPage() {
   const [maxTicket, setMaxTicket] = useState<number | string>('');
   const [maxPendingItemCount, setMaxPendingItemCount] = useState<number | string>(30);
   const [maxItemsPerOrder, setMaxItemsPerOrder] = useState<number | string>(10);
-  const [acceptingOrders, setAcceptingOrders] = useState(true);
-  const [orderStopReason, setOrderStopReason] = useState('');
+  const [defaultThroughput, setDefaultThroughput] = useState<number | string>(1.5);
+  const [recentWindow, setRecentWindow] = useState<number | string>(30);
+  const [minimumItems, setMinimumItems] = useState<number | string>(10);
+  const [warningMinutes, setWarningMinutes] = useState<number | string>(15);
+  const [criticalMinutes, setCriticalMinutes] = useState<number | string>(30);
   const [paymentMethods, setPaymentMethods] = useState<string[]>([]);
   const [customizations, setCustomizations] = useState<CustomOption[]>([]);
   const [newMethod, setNewMethod] = useState('');
@@ -50,8 +53,11 @@ export default function SettingsPage() {
           setMaxTicket(data.maxTicketNumber);
           setMaxPendingItemCount(data.maxPendingItemCount ?? 30);
           setMaxItemsPerOrder(data.maxItemsPerOrder ?? 10);
-          setAcceptingOrders(data.acceptingOrders !== false);
-          setOrderStopReason(data.orderStopReason || '');
+          setDefaultThroughput(data.defaultThroughputPerMinute ?? 1.5);
+          setRecentWindow(data.waitTimeRecentWindowMinutes ?? 30);
+          setMinimumItems(data.waitTimeMinimumCompletedItemCount ?? 10);
+          setWarningMinutes(data.waitTimeWarningMinutes ?? 15);
+          setCriticalMinutes(data.waitTimeCriticalMinutes ?? 30);
           setPaymentMethods(data.paymentMethods || []);
           setCustomizations(data.customizations || []);
         }
@@ -98,8 +104,11 @@ export default function SettingsPage() {
           maxTicketNumber: numMaxTicket,
           maxPendingItemCount: Number(maxPendingItemCount),
           maxItemsPerOrder: Number(maxItemsPerOrder),
-          acceptingOrders,
-          orderStopReason,
+          defaultThroughputPerMinute: Number(defaultThroughput),
+          waitTimeRecentWindowMinutes: Number(recentWindow),
+          waitTimeMinimumCompletedItemCount: Number(minimumItems),
+          waitTimeWarningMinutes: Number(warningMinutes),
+          waitTimeCriticalMinutes: Number(criticalMinutes),
           paymentMethods,
           customizations,
         }),
@@ -128,17 +137,20 @@ export default function SettingsPage() {
           <input type="number" min={1} value={maxTicket} onChange={(e) => setMaxTicket(e.target.value)} className="w-full border-2 p-3 rounded-lg font-bold outline-none focus:ring-2 focus:ring-[#f3b928]" />
         </div>
 
-        <div className={`mb-8 p-4 rounded-xl border-2 ${acceptingOrders ? 'bg-green-50 border-green-300' : 'bg-red-50 border-red-300'}`}>
-          <div className="flex items-center justify-between gap-4 mb-3">
-            <div><p className="font-black">{acceptingOrders ? '受注中' : '受注停止中'}</p><p className="text-xs text-gray-600">レジからの新規注文だけを制御します</p></div>
-            <button onClick={() => setAcceptingOrders(!acceptingOrders)} className={`px-4 py-3 rounded-lg font-black text-white ${acceptingOrders ? 'bg-red-600' : 'bg-green-600'}`}>{acceptingOrders ? '受注を停止' : '受注を再開'}</button>
-          </div>
-          <input value={orderStopReason} onChange={(e) => setOrderStopReason(e.target.value)} maxLength={200} placeholder="停止理由（例：調理が混み合っているため）" className="w-full border-2 p-3 rounded-lg" />
+        <div className="mb-8 grid grid-cols-2 gap-4">
+          <label className="font-bold">未提供数の警告基準<input type="number" min={1} value={maxPendingItemCount} onChange={(e) => setMaxPendingItemCount(e.target.value)} className="mt-2 w-full border-2 p-3 rounded-lg" /></label>
+          <label className="font-bold">1注文あたりの警告基準<input type="number" min={1} value={maxItemsPerOrder} onChange={(e) => setMaxItemsPerOrder(e.target.value)} className="mt-2 w-full border-2 p-3 rounded-lg" /></label>
         </div>
 
-        <div className="mb-8 grid grid-cols-2 gap-4">
-          <label className="font-bold">未提供本数の警告基準<input type="number" min={1} value={maxPendingItemCount} onChange={(e) => setMaxPendingItemCount(e.target.value)} className="mt-2 w-full border-2 p-3 rounded-lg" /></label>
-          <label className="font-bold">1注文の本数上限<input type="number" min={1} value={maxItemsPerOrder} onChange={(e) => setMaxItemsPerOrder(e.target.value)} className="mt-2 w-full border-2 p-3 rounded-lg" /></label>
+        <div className="mb-8 border rounded-xl p-4 bg-blue-50/50">
+          <h2 className="font-black text-gray-800 mb-3">待ち時間の推定設定</h2>
+          <div className="grid grid-cols-2 gap-3 text-sm">
+            <label className="font-bold">初期提供速度（本/分）<input type="number" min="0.01" step="0.1" value={defaultThroughput} onChange={(e) => setDefaultThroughput(e.target.value)} className="mt-1 w-full border-2 p-2 rounded-lg bg-white" /></label>
+            <label className="font-bold">直近の集計時間（分）<input type="number" min="1" value={recentWindow} onChange={(e) => setRecentWindow(e.target.value)} className="mt-1 w-full border-2 p-2 rounded-lg bg-white" /></label>
+            <label className="font-bold">実績として必要な本数<input type="number" min="1" value={minimumItems} onChange={(e) => setMinimumItems(e.target.value)} className="mt-1 w-full border-2 p-2 rounded-lg bg-white" /></label>
+            <label className="font-bold">注意表示（分）<input type="number" min="1" value={warningMinutes} onChange={(e) => setWarningMinutes(e.target.value)} className="mt-1 w-full border-2 p-2 rounded-lg bg-white" /></label>
+            <label className="font-bold">強い警告（分）<input type="number" min="1" value={criticalMinutes} onChange={(e) => setCriticalMinutes(e.target.value)} className="mt-1 w-full border-2 p-2 rounded-lg bg-white" /></label>
+          </div>
         </div>
 
         <div className="mb-8">

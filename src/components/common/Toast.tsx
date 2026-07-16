@@ -5,11 +5,12 @@ import React, { useEffect } from 'react';
 type ToastProps = {
   show: boolean;
   message: string;
+  title?: string;
   type?: 'success' | 'error';
   onClose: () => void;
 };
 
-export const Toast = ({ show, message, type = 'success', onClose }: ToastProps) => {
+export const Toast = ({ show, message, title, type = 'success', onClose }: ToastProps) => {
   useEffect(() => {
     if (show) {
       // 5秒後に自動で閉じる
@@ -33,7 +34,7 @@ export const Toast = ({ show, message, type = 'success', onClose }: ToastProps) 
           <span className="text-xl font-bold">{type === 'success' ? '✓' : '!'}</span>
         </div>
         <div>
-          <p className="font-bold text-sm">{type === 'success' ? '注文完了' : 'エラー'}</p>
+          <p className="font-bold text-sm">{title || (type === 'success' ? '注文完了' : 'エラー')}</p>
           <p className="text-gray-600 text-sm whitespace-pre-wrap">{message}</p>
         </div>
         <button onClick={onClose} className="ml-4 text-gray-400 hover:text-gray-600 p-1">
