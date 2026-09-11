@@ -17,6 +17,8 @@ type SettingUpdateData = {
   waitTimeWarningMinutes?: number;
   waitTimeCriticalMinutes?: number;
   paymentMethods?: string[];
+  cashCalculationEnabled?: boolean;
+  cashPaymentMethod?: string;
   customizations?: { name: string; price: number }[];
   lostTickets?: number[];
   cancelPassword?: string;
@@ -41,6 +43,8 @@ const defaultSetting = (userId: string, storeId: string) => ({
   waitTimeWarningMinutes: 15,
   waitTimeCriticalMinutes: 30,
   paymentMethods: ['現金', 'クレジットカード', 'PayPay', '交通系IC'],
+  cashCalculationEnabled: false,
+  cashPaymentMethod: '現金',
   customizations: [
     { name: '氷少なめ', price: 0 },
     { name: 'ネギ抜き', price: 0 },
@@ -118,6 +122,16 @@ export async function POST(request: Request) {
     if (body.paymentMethods) {
       if (!Array.isArray(body.paymentMethods) || body.paymentMethods.length > 30 || body.paymentMethods.some((method: unknown) => !isNonEmptyString(method, 80))) return badRequest('支払い方法が不正です');
       updateData.paymentMethods = (body.paymentMethods as string[]).map((method) => method.trim());
+    }
+
+    if (body.cashCalculationEnabled !== undefined) {
+      if (typeof body.cashCalculationEnabled !== 'boolean') return badRequest('現金計算の設定が不正です');
+      updateData.cashCalculationEnabled = body.cashCalculationEnabled;
+    }
+
+    if (body.cashPaymentMethod !== undefined) {
+      if (!isNonEmptyString(body.cashPaymentMethod, 80)) return badRequest('現金として扱う支払い方法が不正です');
+      updateData.cashPaymentMethod = body.cashPaymentMethod.trim();
     }
 
     if (body.customizations) {

@@ -29,6 +29,8 @@ export default function SettingsPage() {
   const [warningMinutes, setWarningMinutes] = useState<number | string>(15);
   const [criticalMinutes, setCriticalMinutes] = useState<number | string>(30);
   const [paymentMethods, setPaymentMethods] = useState<string[]>([]);
+  const [cashCalculationEnabled, setCashCalculationEnabled] = useState(false);
+  const [cashPaymentMethod, setCashPaymentMethod] = useState('現金');
   const [customizations, setCustomizations] = useState<CustomOption[]>([]);
   const [newMethod, setNewMethod] = useState('');
   const [newCustomName, setNewCustomName] = useState('');
@@ -59,6 +61,8 @@ export default function SettingsPage() {
           setWarningMinutes(data.waitTimeWarningMinutes ?? 15);
           setCriticalMinutes(data.waitTimeCriticalMinutes ?? 30);
           setPaymentMethods(data.paymentMethods || []);
+          setCashCalculationEnabled(data.cashCalculationEnabled === true);
+          setCashPaymentMethod(data.cashPaymentMethod || '現金');
           setCustomizations(data.customizations || []);
         }
       } catch (error) {
@@ -110,6 +114,8 @@ export default function SettingsPage() {
           waitTimeWarningMinutes: Number(warningMinutes),
           waitTimeCriticalMinutes: Number(criticalMinutes),
           paymentMethods,
+          cashCalculationEnabled,
+          cashPaymentMethod,
           customizations,
         }),
       });
@@ -166,6 +172,23 @@ export default function SettingsPage() {
                 <button onClick={() => setPaymentMethods(paymentMethods.filter((item) => item !== method))} className="text-red-500 font-bold px-1 hover:text-red-700">x</button>
               </div>
             ))}
+          </div>
+          <div className="mt-5 rounded-xl border-2 border-amber-200 bg-amber-50 p-4">
+            <label className="flex cursor-pointer items-center justify-between gap-4 font-black text-gray-800">
+              <span>
+                現金のお預かり・お釣り計算
+                <span className="mt-1 block text-xs font-medium text-gray-500">オフの場合は、現在の金券運用と同じです</span>
+              </span>
+              <input type="checkbox" checked={cashCalculationEnabled} onChange={(e) => setCashCalculationEnabled(e.target.checked)} className="h-6 w-6 accent-[#f3b928]" />
+            </label>
+            {cashCalculationEnabled && (
+              <label className="mt-4 block text-sm font-bold text-gray-700">
+                現金として扱う決済方法
+                <select value={cashPaymentMethod} onChange={(e) => setCashPaymentMethod(e.target.value)} className="mt-2 w-full rounded-lg border-2 bg-white p-3 font-bold">
+                  {paymentMethods.map((method) => <option key={method} value={method}>{method}</option>)}
+                </select>
+              </label>
+            )}
           </div>
         </div>
 

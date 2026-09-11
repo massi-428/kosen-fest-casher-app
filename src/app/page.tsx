@@ -2,6 +2,7 @@
 
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
+import RootineLogo from '../components/RootineLogo';
 import Image from 'next/image';
 
 export default function Home() {
@@ -32,9 +33,7 @@ export default function Home() {
       )}
 
       {/* タイトルテキスト */}
-      <div className="text-8xl font-black text-gray-800 px-3 py-2 mb-8 tracking-tighter">
-        ROOTINE
-      </div>
+      <RootineLogo className="text-8xl text-gray-800 px-3 py-2 mb-8 tracking-tighter" />
       
       <p className="text-gray-600 mb-6 font-bold">「ログインページへ」ボタンを押すと、ログインページに移動します。</p>
 

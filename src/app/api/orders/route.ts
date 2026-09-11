@@ -1,12 +1,13 @@
+import CheckoutQuote from '@/models/CheckoutQuote';
+import { historyQuery } from '@/lib/history-query';
 import { NextResponse } from 'next/server';
 import connectToDatabase from '@/lib/db';
 import Order from '@/models/Order';
-import Product from '@/models/Product';
 import Setting from '@/models/Setting';
 import TicketCounter from '@/models/TicketCounter';
 import { unauthorizedResponse } from '@/lib/auth';
 import { getActiveStoreContext } from '@/lib/store';
-import { badRequest, isNonEmptyString, isOptionalString } from '@/lib/validation';
+import { badRequest, isNonEmptyString } from '@/lib/validation';
 
 export const dynamic = 'force-dynamic';
 
@@ -15,14 +16,6 @@ const DEFAULT_MAX_PENDING_ITEM_COUNT = 30;
 const DEFAULT_MAX_ITEMS_PER_ORDER = 10;
 const DUPLICATE_KEY_ERROR_CODE = 11000;
 const OPEN_STATUSES = ['active', 'pending'];
-
-type IncomingOrderItem = {
-  productId?: unknown;
-  quantity?: unknown;
-  detail?: unknown;
-  selectedOptionNames?: unknown;
-  selectedOptions?: unknown;
-};
 
 const issueTicketCandidate = async (storeId: string, maxTicketNumber: number) => {
   const counter = await TicketCounter.findOneAndUpdate(
@@ -46,8 +39,22 @@ export async function GET(request: Request) {
     const context = await getActiveStoreContext(request);
     if (!context) return unauthorizedResponse();
 
-    const orders = await Order.find({ storeId: context.storeId }).sort({ createdAt: -1 });
-    return NextResponse.json(orders, { status: 200 });
+    const params = new URL(request.url).searchParams;
+    if (params.get('requestId')) {
+      const order = await Order.findOne({ storeId: context.storeId, ownerId: context.userId, requestId: params.get('requestId') });
+      return NextResponse.json({ order });
+    }
+    if (params.get('scope') === 'open') return NextResponse.json(await Order.find({ storeId: context.storeId, status: { $in: OPEN_STATUSES } }).sort({ createdAt: 1 }).limit(500));
+    let filter;
+    try { filter = historyQuery(params, context.storeId); } catch (error) { return badRequest(error instanceof Error ? error.message : '検索条件が正しくありません。'); }
+    const page = Math.max(0, Math.min(10000, Number(params.get('page')) || 0));
+    const limit = 100;
+    const [orders, total, hourly] = await Promise.all([
+      Order.find(filter).sort({ createdAt: -1, _id: -1 }).skip(page * limit).limit(limit),
+      Order.countDocuments(filter),
+      Order.aggregate([{ $match: { ...filter, ...(filter.status === 'cancelled' ? {} : { status: filter.status || { $ne: 'cancelled' } }) } }, { $group: { _id: { $hour: { date: '$createdAt', timezone: 'Asia/Tokyo' } }, count: { $sum: { $cond: [{ $eq: ['$status', 'cancelled'] }, 0, 1] } } } }]),
+    ]);
+    return NextResponse.json({ orders, total, page, limit, hourly, date: params.get('date') }, { status: 200 });
   } catch (error) {
     console.error('注文取得エラー:', error);
     return NextResponse.json({ message: '注文情報の取得に失敗しました。' }, { status: 500 });
@@ -70,44 +77,26 @@ export async function POST(request: Request) {
     const existingOrder = await Order.findOne({ storeId, requestId });
     if (existingOrder) return orderSuccess(existingOrder, true);
 
-    if (!Array.isArray(body.items) || body.items.length === 0 || body.items.length > 100) return badRequest('注文商品が正しくありません。');
-    if (!isNonEmptyString(body.paymentMethod, 80) || !isOptionalString(body.note, 500)) return badRequest('注文内容が正しくありません。');
-
-    const setting = await Setting.findOneAndUpdate(
-      { storeId, key: 'app_config' },
-      { $setOnInsert: { ownerId: context.userId, storeId, key: 'app_config' } },
-      { new: true, upsert: true, setDefaultsOnInsert: true },
-    );
-    const paymentMethods: string[] = Array.isArray(setting?.paymentMethods) ? setting.paymentMethods : [];
-    if (!paymentMethods.includes(String(body.paymentMethod))) return badRequest('選択された支払い方法は利用できません。');
-
-    const maxItemsPerOrder = Number.isInteger(setting?.maxItemsPerOrder) ? setting.maxItemsPerOrder : DEFAULT_MAX_ITEMS_PER_ORDER;
-    const requestedItemCount = (body.items as IncomingOrderItem[]).reduce((sum, item) => sum + (Number.isInteger(item?.quantity) ? Number(item.quantity) : 0), 0);
-    if ((body.items as IncomingOrderItem[]).some((item) => !Number.isInteger(item?.quantity) || Number(item.quantity) < 1)) {
-      return badRequest('数量は正の整数で入力してください。');
+    const quote = await CheckoutQuote.findOne({ storeId, userId: context.userId, requestId });
+    if (!quote) return NextResponse.json({ message: '会計前に金額を確認してください。' }, { status: 409 });
+    if (body.expectedTotal !== quote.totalAmount) return NextResponse.json({ message: '提示金額を再確認してください。', totalAmount: quote.totalAmount }, { status: 409 });
+    if (!quote.paymentMethods.includes(body.paymentMethod)) return badRequest('選択された支払い方法は利用できません。');
+    const safeItems = quote.items;
+    const totalAmount = quote.totalAmount;
+    const requestedItemCount = safeItems.reduce((sum: number, item: { quantity: number }) => sum + item.quantity, 0);
+    let receivedAmount: number | undefined;
+    let changeAmount: number | undefined;
+    if (quote.cashCalculationEnabled && body.paymentMethod === quote.cashPaymentMethod) {
+      receivedAmount = body.receivedAmount;
+      if (typeof receivedAmount !== 'number' || !Number.isInteger(receivedAmount) || receivedAmount < totalAmount || receivedAmount > 10000000) return badRequest('預かり金は確定金額以上の整数で入力してください。');
+      changeAmount = receivedAmount - totalAmount;
     }
-
-    const productIds = [...new Set((body.items as IncomingOrderItem[]).map((item) => String(item.productId || '')))];
-    if (productIds.some((id) => !id)) return badRequest('商品IDが正しくありません。');
-    const products = await Product.find({ storeId, _id: { $in: productIds } });
-    const productMap = new Map(products.map((product) => [String(product._id), product]));
-    if (productMap.size !== productIds.length) return badRequest('存在しない商品が含まれています。');
-
-    const optionMap = new Map<string, number>((Array.isArray(setting?.customizations) ? setting.customizations : []).map((option: { name: string; price: number }) => [option.name, option.price]));
-    const items = (body.items as IncomingOrderItem[]).map((item) => {
-      const product = productMap.get(String(item.productId));
-      if (!product || !isOptionalString(item.detail, 300)) return null;
-      const names = Array.isArray(item.selectedOptionNames)
-        ? item.selectedOptionNames
-        : Array.isArray(item.selectedOptions) ? item.selectedOptions.map((option: { name?: unknown }) => option?.name) : [];
-      if (names.some((name: unknown) => !isNonEmptyString(name, 80) || !optionMap.has(String(name)))) return null;
-      const selectedOptions = names.map((name: unknown) => ({ name: String(name), price: optionMap.get(String(name)) as number }));
-      const unitPrice = product.price + selectedOptions.reduce((sum: number, option: { price: number }) => sum + option.price, 0);
-      return { productId: String(product._id), productName: product.name, quantity: Number(item.quantity), amount: unitPrice * Number(item.quantity), detail: typeof item.detail === 'string' ? item.detail : '', selectedOptions };
-    });
-    if (items.some((item) => item === null)) return badRequest('注文詳細またはオプションが正しくありません。');
-    const safeItems = items.filter((item): item is NonNullable<typeof item> => item !== null);
-    const totalAmount = safeItems.reduce((sum, item) => sum + item.amount, 0);
+    const submission = { paymentMethod: body.paymentMethod, receivedAmount: receivedAmount ?? null, changeAmount: changeAmount ?? null };
+    const lockedQuote = await CheckoutQuote.findOneAndUpdate({ _id: quote._id, submission: null }, { $set: { submission } }, { new: true });
+    const stored = lockedQuote?.submission || (await CheckoutQuote.findById(quote._id))?.submission;
+    if (JSON.stringify(stored) !== JSON.stringify(submission)) return NextResponse.json({ message: 'この操作IDの会計内容は確定済みです。結果確認から再開してください。' }, { status: 409 });
+    const setting = await Setting.findOneAndUpdate({ storeId, key: 'app_config' }, { $setOnInsert: { ownerId: context.userId, storeId, key: 'app_config' } }, { new: true, upsert: true, setDefaultsOnInsert: true });
+    const maxItemsPerOrder = Number.isInteger(setting?.maxItemsPerOrder) ? setting.maxItemsPerOrder : DEFAULT_MAX_ITEMS_PER_ORDER;
 
     const actualPending = await Order.aggregate([
       { $match: { storeId, status: { $in: OPEN_STATUSES } } },
@@ -149,7 +138,7 @@ export async function POST(request: Request) {
       if (lostTickets.has(Number(candidate))) continue;
       if (await Order.exists({ storeId, ticketNumber: candidate, status: { $in: OPEN_STATUSES } })) continue;
       try {
-        const order = await Order.create({ ownerId: context.userId, storeId, requestId, ticketNumber: candidate, items: safeItems, totalAmount, status: 'active', paymentMethod: body.paymentMethod, note: body.note || '' });
+        const order = await Order.create({ ownerId: context.userId, storeId, requestId, ticketNumber: candidate, items: safeItems, totalAmount, status: 'active', paymentMethod: body.paymentMethod, receivedAmount, changeAmount, note: quote.note || '' });
         reservedItemCount = 0;
         return orderSuccess(order, false, capacityWarning);
       } catch (error) {
@@ -170,4 +159,9 @@ export async function POST(request: Request) {
     console.error('注文登録エラー:', error);
     return NextResponse.json({ message: '注文の登録に失敗しました。' }, { status: 500 });
   }
+}
+
+// Legacy clients must not collect money before reserving a settlement operation.
+export async function PUT() {
+  return NextResponse.json({ message: '注文変更は精算対象の確定から開始してください。画面を再読み込みしてください。' }, { status: 409 });
 }

@@ -12,10 +12,17 @@ const withDatabaseName = (uri, dbName) => {
 };
 
 const skipReason = 'Set RUN_DB_TESTS=1 and MONGODB_URI to run MongoDB integration tests';
+const connectIsolated = async uri => {
+  const name = new URL(uri).pathname.slice(1);
+  assert.ok(name.startsWith(uniqueDbName));
+  await mongoose.connect(uri, { dbName: name, bufferCommands: false, autoCreate: false, autoIndex: false, serverSelectionTimeoutMS: 12000 });
+  assert.equal(mongoose.connection.name, name);
+  assert.equal((await mongoose.connection.db.listCollections().toArray()).length, 0);
+};
 
 test('MongoDB integration: store-scoped data is isolated by storeId', { skip: shouldRun ? false : skipReason }, async () => {
   const uri = withDatabaseName(process.env.MONGODB_URI, uniqueDbName);
-  await mongoose.connect(uri, { bufferCommands: false });
+  await connectIsolated(uri);
 
   try {
     const db = mongoose.connection.db;
@@ -60,7 +67,7 @@ test('MongoDB integration: store-scoped data is isolated by storeId', { skip: sh
 
 test('MongoDB integration: duplicate stores can be consolidated into the oldest store', { skip: shouldRun ? false : skipReason }, async () => {
   const uri = withDatabaseName(process.env.MONGODB_URI, `${uniqueDbName}_cleanup`);
-  await mongoose.connect(uri, { bufferCommands: false });
+  await connectIsolated(uri);
 
   try {
     const db = mongoose.connection.db;
@@ -106,7 +113,7 @@ test('MongoDB integration: duplicate stores can be consolidated into the oldest 
 
 test('MongoDB integration: active ticket numbers are unique per store', { skip: shouldRun ? false : skipReason }, async () => {
   const uri = withDatabaseName(process.env.MONGODB_URI, `${uniqueDbName}_tickets`);
-  await mongoose.connect(uri, { bufferCommands: false });
+  await connectIsolated(uri);
 
   try {
     const db = mongoose.connection.db;
@@ -139,7 +146,7 @@ test('MongoDB integration: active ticket numbers are unique per store', { skip: 
 
 test('MongoDB integration: request ids are unique per store and pending count can exceed the warning threshold', { skip: shouldRun ? false : skipReason }, async () => {
   const uri = withDatabaseName(process.env.MONGODB_URI, `${uniqueDbName}_orders`);
-  await mongoose.connect(uri, { bufferCommands: false });
+  await connectIsolated(uri);
 
   try {
     const db = mongoose.connection.db;

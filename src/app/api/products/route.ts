@@ -43,7 +43,7 @@ export async function POST(request: Request) {
     const price = toValidPrice(body.price);
     if (!isNonEmptyString(body.name) || price === null) return badRequest('商品名と価格を正しく入力してください');
 
-    const newProduct = await Product.create({ ownerId: context.userId, storeId: context.storeId, name: body.name.trim(), price });
+    const newProduct = await Product.create({ ownerId: context.userId, storeId: context.storeId, name: body.name.trim(), price, isAvailable: true });
     return NextResponse.json(newProduct, { status: 201 });
   } catch {
     return NextResponse.json({ message: '商品の作成に失敗しました' }, { status: 500 });
@@ -56,11 +56,23 @@ export async function PUT(request: Request) {
     const context = await getActiveStoreContext(request);
     if (!context) return unauthorizedResponse();
 
-    const { _id, name, price } = await request.json();
-    const nextPrice = toValidPrice(price);
-    if (!isValidObjectId(_id) || !isNonEmptyString(name) || nextPrice === null) return badRequest('商品情報が不正です');
+    const { _id, name, price, isAvailable } = await request.json();
+    if (!isValidObjectId(_id)) return badRequest('商品IDが不正です');
 
-    const updated = await Product.findOneAndUpdate({ _id, storeId: context.storeId }, { name: name.trim(), price: nextPrice }, { new: true });
+    const updateData: { name?: string; price?: number; isAvailable?: boolean } = {};
+    if (name !== undefined || price !== undefined) {
+      const nextPrice = toValidPrice(price);
+      if (!isNonEmptyString(name) || nextPrice === null) return badRequest('商品情報が不正です');
+      updateData.name = name.trim();
+      updateData.price = nextPrice;
+    }
+    if (isAvailable !== undefined) {
+      if (typeof isAvailable !== 'boolean') return badRequest('販売状態が不正です');
+      updateData.isAvailable = isAvailable;
+    }
+    if (Object.keys(updateData).length === 0) return badRequest('更新する商品情報がありません');
+
+    const updated = await Product.findOneAndUpdate({ _id, storeId: context.storeId }, updateData, { new: true });
     if (!updated) return NextResponse.json({ message: '商品が見つかりません' }, { status: 404 });
 
     return NextResponse.json(updated, { status: 200 });

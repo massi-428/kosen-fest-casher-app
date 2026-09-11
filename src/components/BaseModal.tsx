@@ -7,9 +7,10 @@ type BaseModalProps = {
   onClose: () => void;
   children: ReactNode;
   closeOnOverlayClick?: boolean; // ★追加: 枠外クリックで閉じるかどうか
+  size?: 'md' | 'xl';
 };
 
-export const BaseModal = ({ isOpen, onClose, children, closeOnOverlayClick = true }: BaseModalProps) => {
+export const BaseModal = ({ isOpen, onClose, children, closeOnOverlayClick = true, size = 'md' }: BaseModalProps) => {
   // ESCキーで閉じる機能
   useEffect(() => {
     const handleEsc = (e: KeyboardEvent) => {
@@ -34,7 +35,7 @@ export const BaseModal = ({ isOpen, onClose, children, closeOnOverlayClick = tru
       }} 
     >
       <div 
-        className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-md max-h-[90vh] overflow-y-auto transform transition-all animate-bounceIn"
+        className={`bg-white rounded-2xl shadow-2xl p-6 w-full ${size === 'xl' ? 'max-w-4xl' : 'max-w-md'} max-h-[90vh] overflow-y-auto transform transition-all animate-bounceIn`}
         onClick={(e) => e.stopPropagation()} 
       >
         {children}

@@ -39,7 +39,9 @@ type PaymentModalProps = {
   isOpen: boolean;
   paymentMethods: string[];
   totalAmount: number;
-  onConfirm: (paymentMethod: string) => void;
+  cashCalculationEnabled: boolean;
+  cashPaymentMethod: string;
+  onConfirm: (paymentMethod: string, receivedAmount?: number) => void;
   onCancel: () => void;
 };
 
@@ -143,14 +145,23 @@ export const DetailModal = ({ isOpen, productName, currentDetail, currentOptions
   );
 };
 
-export const PaymentModal = ({ isOpen, paymentMethods, totalAmount, onConfirm, onCancel }: PaymentModalProps) => {
+export const PaymentModal = ({ isOpen, paymentMethods, totalAmount, cashCalculationEnabled, cashPaymentMethod, onConfirm, onCancel }: PaymentModalProps) => {
   const [selected, setSelected] = useState("");
+  const [receivedAmount, setReceivedAmount] = useState("");
 
   useEffect(() => {
-    if (isOpen) setSelected("");
+    if (isOpen) {
+      setSelected("");
+      setReceivedAmount("");
+    }
   }, [isOpen]);
 
   if (!isOpen) return null;
+
+  const usesCashCalculation = cashCalculationEnabled && selected === cashPaymentMethod;
+  const received = Number(receivedAmount);
+  const canConfirmCash = Number.isInteger(received) && received >= totalAmount;
+  const changeAmount = canConfirmCash ? received - totalAmount : 0;
 
   return (
     <BaseModal isOpen={isOpen} onClose={onCancel} closeOnOverlayClick={false}>
@@ -176,12 +187,35 @@ export const PaymentModal = ({ isOpen, paymentMethods, totalAmount, onConfirm, o
           </button>
         ))}
       </div>
+      {usesCashCalculation && (
+        <div className="mb-6 rounded-2xl border-2 border-amber-200 bg-amber-50 p-4">
+          <label className="block text-sm font-black text-gray-700">
+            お預かり金額
+            <input
+              type="number"
+              min={totalAmount}
+              step="1"
+              inputMode="numeric"
+              value={receivedAmount}
+              onChange={(e) => setReceivedAmount(e.target.value)}
+              placeholder={`${totalAmount}`}
+              className="mt-2 w-full rounded-xl border-2 border-amber-300 bg-white p-3 text-right text-2xl font-black outline-none focus:ring-2 focus:ring-[#f3b928]"
+            />
+          </label>
+          <button type="button" onClick={() => setReceivedAmount(String(totalAmount))} className="mt-2 w-full rounded-lg bg-white py-2 text-sm font-bold text-gray-700 border border-amber-200 hover:bg-amber-100">ちょうど預かる</button>
+          <div className="mt-4 flex items-center justify-between border-t border-amber-200 pt-4">
+            <span className="font-bold text-gray-600">お釣り</span>
+            <span className={`text-3xl font-black font-mono ${canConfirmCash ? 'text-green-700' : 'text-gray-400'}`}>¥{changeAmount.toLocaleString()}</span>
+          </div>
+          {receivedAmount && !canConfirmCash && <p className="mt-2 text-center text-sm font-bold text-red-600">合計金額以上を入力してください</p>}
+        </div>
+      )}
       <div className="flex gap-3">
         <button onClick={onCancel} className="flex-1 py-4 bg-gray-100 text-gray-500 rounded-xl font-bold hover:bg-gray-200 transition">戻る</button>
         <button
-          onClick={() => onConfirm(selected)}
-          disabled={!selected}
-          className={`flex-[2] py-4 text-white rounded-xl font-black text-xl transition-all shadow-lg ${selected ? 'bg-green-500 hover:bg-green-600 text-white' : 'bg-gray-300 cursor-not-allowed text-white'}`}
+          onClick={() => onConfirm(selected, usesCashCalculation ? received : undefined)}
+          disabled={!selected || (usesCashCalculation && !canConfirmCash)}
+          className={`flex-[2] py-4 text-white rounded-xl font-black text-xl transition-all shadow-lg ${selected && (!usesCashCalculation || canConfirmCash) ? 'bg-green-500 hover:bg-green-600 text-white' : 'bg-gray-300 cursor-not-allowed text-white'}`}
         >
           注文を確定
         </button>

@@ -147,3 +147,10 @@ export const f18 = localFont({
   variable: '--font-f18',
   display: 'swap',
 });
+
+// 8. Oxanium (ロゴ用フォント)
+export const Oxanium = localFont({
+  src: './font/Oxanium/Oxanium-Bold.woff2',
+  variable: '--font-oxanium',
+  display: 'swap',
+});

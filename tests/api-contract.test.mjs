@@ -78,24 +78,14 @@ test('client auth checks do not trust localStorage currentUserId', () => {
   assert.deepEqual(offenders, []);
 });
 
-test('cancelled tickets require the admin cancel password', () => {
-  const ticketsRoute = read('src/app/api/tickets/route.ts');
-  const historyPage = read('src/app/history/page.tsx');
-  const systemModel = read('src/models/SystemSetting.ts');
-  const systemRoute = read('src/app/api/admin/system-settings/route.ts');
-
-  assert.match(systemModel, /cancelPassword/);
-  assert.match(systemRoute, /cancelPassword/);
-  assert.match(ticketsRoute, /getCancelPassword\(\)/);
-  assert.match(ticketsRoute, /newStatus === 'cancelled'/);
-  assert.match(ticketsRoute, /status: 403/);
-  assert.match(ticketsRoute, /if \(!updatedOrder\)/);
-  assert.match(ticketsRoute, /対象の注文が見つかりません/);
-  assert.doesNotMatch(historyPage, /window\.prompt/);
-  assert.match(historyPage, /cancelPassword/);
-  assert.match(historyPage, /キャンセル完了/);
-  assert.match(historyPage, /submitCancelOrder/);
-  assert.match(historyPage, /キャンセル用パスワードを入力してください/);
+test('cancellation requires password and a reserved settlement operation', () => {
+  const source = read('src/app/api/settlements/route.ts');
+  assert.match(source, /getCancelPassword/);
+  assert.match(source, /status: 403/);
+  assert.match(source, /settlementLock/);
+  assert.match(source, /phase: 'prepared'/);
+  assert.match(read('src/app/api/tickets/route.ts'), /全取消は先に精算対象を確定/);
+  assert.match(read('src/app/history/page.tsx'), /返金対象を確定/);
 });
 
 test('store data is scoped by storeId in core APIs', () => {
@@ -130,7 +120,7 @@ test('orders are issued ticket numbers on the server', () => {
   assert.match(ordersRoute, /利用可能な整理券番号がありません/);
   assert.match(ordersRoute, /ticketNumber:\s*candidate/);
   assert.doesNotMatch(orderPage, /ticketNumber:\s*currentTicket/);
-  assert.match(orderPage, /data\.ticketNumber \|\| data\.order\?\.ticketNumber/);
+  assert.match(orderPage, /orderSucceeded/);
 });
 
 test('order creation is idempotent and prices are calculated on the server', () => {
@@ -142,8 +132,8 @@ test('order creation is idempotent and prices are calculated on the server', () 
   assert.match(orderModel, /\{ storeId: 1, requestId: 1 \}/);
   assert.match(orderModel, /partialFilterExpression: \{ requestId: \{ \$type: 'string' \} \}/);
   assert.match(ordersRoute, /Order\.findOne\(\{ storeId, requestId \}\)/);
-  assert.match(ordersRoute, /Product\.find\(\{ storeId/);
-  assert.match(ordersRoute, /totalAmount = safeItems\.reduce/);
+  assert.match(read('src/app/api/order-quotes/route.ts'), /Product\.find/);
+  assert.match(ordersRoute, /totalAmount = quote\.totalAmount/);
   assert.doesNotMatch(ordersRoute, /toValidPrice\(body\.totalAmount\)/);
   assert.match(orderPage, /crypto\.randomUUID\(\)/);
   assert.match(orderPage, /requestId: requestIdRef\.current/);
@@ -174,8 +164,69 @@ test('orders track pending item warning thresholds', () => {
   assert.match(read('src/app/order/page.tsx'), /それでも注文を追加しますか/);
   assert.match(read('src/app/order/page.tsx'), /今回の注文は想定数/);
   assert.doesNotMatch(read('src/app/order/page.tsx'), /currentOrderItemCount > maxItemsPerOrder\}/);
-  assert.match(read('src/app/order/page.tsx'), /警告: \$\{data\.warning\.message\}/);
+  assert.match(read('src/app/order/page.tsx'), /warning\?\.message/);
   assert.doesNotMatch(read('src/app/order/page.tsx'), /data\.warning \? 'error' : 'success'/);
+});
+
+test('sold-out products cannot be ordered and can be toggled from product management', () => {
+  const productModel = read('src/models/Product.ts');
+  const productsRoute = read('src/app/api/products/route.ts');
+  const orderPage = read('src/app/order/page.tsx');
+
+  assert.match(productModel, /isAvailable:\s*\{\s*type:\s*Boolean,\s*default:\s*true/);
+  assert.match(productsRoute, /typeof isAvailable !== 'boolean'/);
+  assert.match(productsRoute, /updateData\.isAvailable = isAvailable/);
+  assert.match(read('src/lib/order-accounting.ts'), /product\.isAvailable === false/);
+  assert.match(read('src/app/api/order-quotes/route.ts'), /priceEditedItems/);
+  assert.match(orderPage, /handleToggleAvailability/);
+  assert.match(orderPage, /売り切れ商品をカートから削除してください/);
+  assert.match(orderPage, /disabled=\{!isEditMode && !isAvailable\}/);
+});
+
+test('cash calculation can be enabled per payment method and change is calculated on the server', () => {
+  const settingModel = read('src/models/Setting.ts');
+  const settingsRoute = read('src/app/api/settings/route.ts');
+  const settingsPage = read('src/app/settings/page.tsx');
+  const orderModel = read('src/models/Order.ts');
+  const ordersRoute = read('src/app/api/orders/route.ts');
+  const paymentModal = read('src/components/order/OrderModals.tsx');
+
+  assert.match(settingModel, /cashCalculationEnabled/);
+  assert.match(settingModel, /cashPaymentMethod/);
+  assert.match(settingsRoute, /typeof body\.cashCalculationEnabled !== 'boolean'/);
+  assert.match(settingsPage, /現金のお預かり・お釣り計算/);
+  assert.match(orderModel, /receivedAmount/);
+  assert.match(orderModel, /changeAmount/);
+  assert.match(ordersRoute, /receivedAmount - totalAmount/);
+  assert.match(ordersRoute, /receivedAmount, changeAmount/);
+  assert.match(paymentModal, /お預かり金額/);
+  assert.match(paymentModal, /お釣り/);
+});
+
+test('open order edits use reservation before handoff and preserve original cash', () => {
+  const route = read('src/app/api/settlements/route.ts');
+  assert.match(route, /priceEditedItems/);
+  assert.match(route, /revisionFilter/);
+  assert.match(route, /settlementOperations: operations/);
+  assert.match(route, /settlements:/);
+  assert.match(route, /受け渡し開始後は中止できません/);
+  assert.match(read('src/components/order/EditOrderModal.tsx'), /精算対象を確定/);
+  assert.match(read('src/components/order/SettlementModal.tsx'), /結果確認/);
+});
+
+test('daily sales report can be exported as a UTF-8 CSV', () => {
+  const reportRoute = read('src/app/api/report/route.ts');
+  const reportPage = read('src/app/report/page.tsx');
+
+  assert.match(reportRoute, /searchParams\.get\('scope'\) === 'all'/);
+  assert.match(reportRoute, /\['active', 'pending', 'completed', 'cancelled'\]/);
+  assert.match(reportPage, /const exportCsv = async \(\) =>/);
+  assert.match(reportPage, /scope=all/);
+  assert.match(reportPage, /\\uFEFF/);
+  assert.match(reportPage, /text\/csv;charset=utf-8/);
+  assert.match(reportPage, /rootine-sales-\$\{date\}\.csv/);
+  assert.match(reportPage, /売上扱い/);
+  assert.match(reportPage, /全注文CSV/);
 });
 
 test('admin login does not assign store context', () => {

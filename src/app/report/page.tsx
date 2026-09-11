@@ -1,6 +1,8 @@
 "use client";
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useRef, useState, useEffect, useCallback, useMemo } from 'react';
+
+import { isSalesOrder, type Settlement } from '@/lib/order-accounting';
 
 // --- ユーティリティ ---
 const useRouter = () => ({
@@ -19,7 +21,7 @@ const apiFetch = async (url: string, options: RequestInit = {}) => {
     
     const headers = new Headers(options.headers || {});
     
-    return await fetch(absoluteUrl, { ...options, headers });
+    return await fetch(absoluteUrl, { ...options, headers, signal: options.signal || AbortSignal.timeout(15000) });
   } catch (e) {
     console.error("Fetch error:", e);
     return { ok: false, status: 500, json: async () => ({ message: "通信エラー" }) } as Response;
@@ -40,11 +42,16 @@ type OrderItem = {
 };
 
 type Order = {
+  settlements?: Settlement[];
   _id: string;
   ticketNumber: string;
   items: OrderItem[];
   totalAmount: number;
   paymentMethod?: string;
+  receivedAmount?: number | null;
+  changeAmount?: number | null;
+  status?: string;
+  note?: string;
   createdAt: string;
 };
 
@@ -61,7 +68,12 @@ export default function ReportPage() {
   const router = useRouter();
   const [date, setDate] = useState(getTodayString());
   const [orders, setOrders] = useState<Order[]>([]);
-  const [, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [loadedDate, setLoadedDate] = useState('');
+  const [lastUpdated, setLastUpdated] = useState('');
+  const fetchSequence = useRef(0);
+  const [isExporting, setIsExporting] = useState(false);
 
   // ログインチェック
   useEffect(() => {
@@ -75,19 +87,21 @@ export default function ReportPage() {
 
   // データ取得
   const fetchReport = useCallback(async (targetDate: string) => {
+    const sequence = ++fetchSequence.current;
     setLoading(true);
+    setError('');
     try {
       const res = await apiFetch(`/api/report?date=${targetDate}`, { cache: 'no-store' });
-      if (res.ok) {
-        const data = await res.json();
-        setOrders(data);
-      } else {
-        setOrders([]);
-      }
+      if (sequence !== fetchSequence.current) return;
+      if (!res.ok) throw new Error('日報の取得に失敗しました。');
+      const data = await res.json();
+      if (sequence !== fetchSequence.current) return;
+      if (!Array.isArray(data)) throw new Error('日報の形式が正しくありません。');
+      setOrders(data.filter(isSalesOrder)); setLoadedDate(targetDate); setLastUpdated(new Date().toLocaleString('ja-JP'));
     } catch (error) {
-      console.error("レポート取得エラー", error);
+      if (sequence === fetchSequence.current) setError(error instanceof Error ? error.message : '通信エラーが発生しました。');
     } finally {
-      setLoading(false);
+      if (sequence === fetchSequence.current) setLoading(false);
     }
   }, []);
 
@@ -188,6 +202,53 @@ export default function ReportPage() {
     setDate(`${year}-${month}-${day}`);
   };
 
+  const exportCsv = async () => {
+    setIsExporting(true);
+    try {
+    const response = await apiFetch(`/api/report?date=${date}&scope=all`, { cache: 'no-store' });
+    if (!response.ok) {
+      setIsExporting(false);
+      window.alert('CSV用データの取得に失敗しました。');
+      return;
+    }
+    const exportedOrders: Order[] = await response.json();
+    if (!Array.isArray(exportedOrders)) throw new Error('CSVデータの形式が正しくありません。');
+    const escapeCell = (value: unknown) => {
+      const text = String(value ?? '').replaceAll('"', '""');
+      return `"${text}"`;
+    };
+    const statusLabel = (status?: string) => ({ active: '調理中', pending: '保留中', completed: '完了', cancelled: 'キャンセル' }[status || ''] || status || '');
+    const rows = [
+      ['注文日時', '整理番号', '状態', '売上扱い', '支払方法', '商品名', '数量', '商品金額', 'オプション', '商品メモ', '注文合計', '預かり金', 'お釣り', '注文備考', '売上計上額（明細）', '差額精算履歴（参考・加算不要）'],
+      ...exportedOrders.flatMap((order) => order.items.map((item) => [
+        new Date(order.createdAt).toLocaleString('ja-JP'),
+        order.ticketNumber,
+        statusLabel(order.status),
+        isSalesOrder(order) ? '対象' : '対象外（キャンセル）',
+        order.paymentMethod || '',
+        item.productName,
+        item.quantity,
+        item.amount,
+        (item.selectedOptions || []).map((option) => `${option.name}${option.price !== 0 ? `(${option.price})` : ''}`).join(' / '),
+        item.detail || '',
+        order.totalAmount,
+        order.receivedAmount ?? '',
+        order.changeAmount ?? '',
+        order.note || '',
+        isSalesOrder(order) ? item.amount : 0,
+        (order.settlements || []).map(entry => new Date(entry.createdAt).toLocaleString('ja-JP') + ' ' + (entry.kind === 'cancel' ? '全取消' : '差額精算') + ' ' + entry.delta + '円 ' + entry.paymentMethod + (entry.receivedAmount != null ? ' 預り' + entry.receivedAmount + ' 釣銭' + entry.changeAmount : '')).join(' / '),
+      ])),
+    ];
+    const csv = `\uFEFF${rows.map((row) => row.map(escapeCell).join(',')).join('\r\n')}`;
+    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `rootine-sales-${date}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+    } catch { window.alert('CSVの取得・出力に失敗しました。再試行してください。'); } finally { setIsExporting(false); }
+  };
+
   return (
     <div className="min-h-screen bg-gray-100 p-6 font-sans text-gray-900">
       
@@ -224,8 +285,18 @@ export default function ReportPage() {
         >
           翌日 ▶
         </button>
+        <button onClick={() => void exportCsv()} disabled={isExporting} className="rounded-lg bg-green-600 px-4 py-2 font-bold text-white shadow hover:bg-green-700 disabled:cursor-not-allowed disabled:bg-gray-300">{isExporting ? '出力中...' : '全注文CSV'}</button>
       </div>
 
+      <div role="status" className="mb-5 rounded-xl bg-white p-4">
+        <p>売上対象: 会計済みの調理中・保留中・完了注文（キャンセルは対象外）。注文受付日（日本時間）に変更後の金額を計上します。差額精算履歴は参考記録で、売上に再加算しません。</p>
+        <p>最終更新: {lastUpdated || '未取得'} {loadedDate && '（取得済みの日付: ' + loadedDate + '）'}</p>
+        {loading && <p>読み込み中…</p>}
+        {error && <p className="font-bold text-red-600">{error} {loadedDate ? '最後に取得できたデータを保持しています。' : '売上は未取得です。'}</p>}
+        {loadedDate && loadedDate !== date && <p className="font-bold text-orange-700">選択日の日報は未取得です。以下は {loadedDate} のデータです。</p>}
+        <button onClick={() => void fetchReport(date)} disabled={loading} className="mt-2 rounded bg-blue-50 p-2 text-blue-700">再取得・再試行</button>
+      </div>
+      {loadedDate && <>
       {/* サマリーカード */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
         <div className="bg-white p-6 rounded-xl shadow border-l-8 border-blue-500">
@@ -350,6 +421,7 @@ export default function ReportPage() {
         </div>
       </div>
 
+      </>}
     </div>
   );
 }

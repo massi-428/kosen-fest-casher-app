@@ -1,13 +1,13 @@
 "use client";
 
-import { useState, useEffect, useCallback } from 'react';
+import { useRef, useState, useEffect, useCallback } from 'react';
 
 const apiFetch = async (url: string, options: RequestInit = {}) => {
   try {
     const baseUrl = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000';
     const absoluteUrl = url.startsWith('http') ? url : new URL(url, baseUrl).toString();
     const headers = new Headers(options.headers || {});
-    return await fetch(absoluteUrl, { ...options, headers });
+    return await fetch(absoluteUrl, { ...options, headers, signal: options.signal || AbortSignal.timeout(15000) });
   } catch {
     return { ok: false, status: 500, json: async () => ({ message: "通信エラー" }) } as Response;
   }
@@ -15,16 +15,17 @@ const apiFetch = async (url: string, options: RequestInit = {}) => {
 
 type CustomOption = { name: string; price: number; };
 type OrderItem = { productName: string; price: number; quantity: number; amount: number; detail?: string; selectedOptions?: CustomOption[]; };
-type Order = { _id: string; ticketNumber: string; items: OrderItem[]; totalAmount: number; status: 'active' | 'completed' | 'pending'; createdAt: string; note?: string; };
+type Order = { revision?: number; _id: string; ticketNumber: string; items: OrderItem[]; totalAmount: number; status: 'active' | 'completed' | 'pending'; createdAt: string; note?: string; };
 type OrderStatus = Order['status'];
 type OrderTicketProps = {
   order: Order;
   onComplete: (orderId: string, ticketNumber: string) => void;
   onPending: (orderId: string, ticketNumber: string) => void;
   isPendingMode?: boolean;
+  busy?: boolean;
 };
 
-const OrderTicket = ({ order, onComplete, onPending, isPendingMode = false }: OrderTicketProps) => {
+const OrderTicket = ({ order, onComplete, onPending, isPendingMode = false, busy = false }: OrderTicketProps) => {
   const [elapsedTime, setElapsedTime] = useState("");
   const [alertLevel, setAlertLevel] = useState<"normal" | "warning" | "critical">("normal");
 
@@ -89,7 +90,7 @@ const OrderTicket = ({ order, onComplete, onPending, isPendingMode = false }: Or
       </div>
       <div className="p-2 bg-white border-t-2 border-gray-100 flex gap-2 h-20 items-center">
         {/* ★変更: 保留ボタンをシンプルな棒線二本（一時停止マーク）に変更 */}
-        <button onClick={() => onPending(order._id, order.ticketNumber)} className={`h-full rounded-xl shadow-sm transition-all transform active:scale-95 text-white font-bold flex-1 flex flex-col justify-center items-center gap-0.5 ${isPendingMode ? 'bg-blue-500 hover:bg-blue-600' : 'bg-gray-400 hover:bg-gray-500'}`}>
+        <button disabled={busy} onClick={() => onPending(order._id, order.ticketNumber)} className={`h-full rounded-xl shadow-sm transition-all transform active:scale-95 text-white font-bold flex-1 flex flex-col justify-center items-center gap-0.5 ${isPendingMode ? 'bg-blue-500 hover:bg-blue-600' : 'bg-gray-400 hover:bg-gray-500'}`}>
           {isPendingMode ? (
             // 復帰: 再生マーク風
             <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8" viewBox="0 0 24 24" fill="currentColor">
@@ -105,7 +106,7 @@ const OrderTicket = ({ order, onComplete, onPending, isPendingMode = false }: Or
           <span className="text-[10px]">{isPendingMode ? '復帰' : '保留'}</span>
         </button>
 
-        <button onClick={() => onComplete(order._id, order.ticketNumber)} className="h-full flex-[3] bg-green-600 hover:bg-green-700 active:bg-green-800 text-white rounded-xl shadow-md transition-all transform active:scale-95 flex items-center justify-center gap-2 group"><span className="text-2xl font-black tracking-wider">DONE</span></button>
+        <button disabled={busy} onClick={() => onComplete(order._id, order.ticketNumber)} className="h-full flex-[3] bg-green-600 hover:bg-green-700 active:bg-green-800 text-white rounded-xl shadow-md transition-all transform active:scale-95 flex items-center justify-center gap-2 group"><span className="text-2xl font-black tracking-wider">DONE</span></button>
       </div>
     </div>
   );
@@ -113,26 +114,47 @@ const OrderTicket = ({ order, onComplete, onPending, isPendingMode = false }: Or
 
 export default function KitchenDisplaySystem() {
   const [orders, setOrders] = useState<Order[]>([]);
-  const [, setLoading] = useState(true);
+  const [loading, setLoading] = useState(true);
 
+  const [lastUpdated, setLastUpdated] = useState('');
+  const [fetchError, setFetchError] = useState('');
+  const [operationError, setOperationError] = useState('');
+  const busyRef = useRef(new Set<string>());
+  const [busy, setBusy] = useState<string[]>([]);
+
+  const fetchSequence = useRef(0);
   const fetchOrders = useCallback(async () => {
+    const sequence = ++fetchSequence.current;
+    setLoading(true);
     try {
-      const res = await apiFetch('/api/orders', { cache: 'no-store' });
+      const res = await apiFetch('/api/orders?scope=open', { cache: 'no-store' });
+      if (sequence !== fetchSequence.current) return;
+      if (!res.ok) throw new Error('注文を取得できません。最後に取得した内容を表示しています。');
       if (res.ok) {
         const data: Order[] = await res.json();
+        if (sequence !== fetchSequence.current) return;
+        if (!Array.isArray(data)) throw new Error('注文の形式が正しくありません。');
+        setLastUpdated(new Date().toLocaleTimeString()); setFetchError('');
         const uniqueOrdersMap = new Map<string, Order>();
         data.forEach(order => { if (order._id) uniqueOrdersMap.set(String(order._id), order); });
         const uniqueOrders = Array.from(uniqueOrdersMap.values()) as Order[];
         setOrders(uniqueOrders.filter(o => o.status === 'active' || o.status === 'pending').sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()));
       }
-    } catch (error) { console.error(error); } finally { setLoading(false); }
+    } catch (error) { if (sequence === fetchSequence.current) setFetchError(error instanceof Error ? error.message : '通信エラー'); } finally { if (sequence === fetchSequence.current) setLoading(false); }
   }, []);
 
   useEffect(() => { fetchOrders(); const interval = setInterval(fetchOrders, 5000); return () => clearInterval(interval); }, [fetchOrders]);
 
   const updateStatus = async (orderId: string, ticketNumber: string, newStatus: OrderStatus) => {
-    setOrders(prev => { if (newStatus === 'completed') return prev.filter(o => o._id !== orderId); return prev.map(o => o._id === orderId ? { ...o, status: newStatus } : o); });
-    try { await apiFetch('/api/tickets', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ticketNumber: String(ticketNumber), status: newStatus, orderId: orderId }), cache: 'no-store' }); setTimeout(fetchOrders, 500); } catch { fetchOrders(); }
+    if (busyRef.current.has(orderId)) return;
+    const order = orders.find(o => o._id === orderId);
+    if (!order) return;
+    busyRef.current.add(orderId); setBusy([...busyRef.current]); setOperationError('');
+    try {
+      const res = await apiFetch('/api/tickets', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ticketNumber, status: newStatus, orderId, expectedRevision: order.revision || 0 }) });
+      if (!res.ok) { const data = await res.json().catch(() => ({})); throw new Error(data.message || '更新結果を確認できません。'); }
+    } catch (error) { setOperationError((error instanceof Error ? error.message : '通信エラー') + ' 最新状態を確認し、必要なら再試行してください。'); }
+    finally { await fetchOrders(); busyRef.current.delete(orderId); setBusy([...busyRef.current]); }
   };
 
   const activeOrders = orders.filter(o => o.status === 'active');
@@ -145,15 +167,16 @@ export default function KitchenDisplaySystem() {
           <h1 className="text-xl font-bold tracking-wider flex items-center gap-3"><span className="bg-blue-600 px-3 py-0.5 rounded text-white shadow-lg border border-blue-400 text-sm">KDS</span><span className="text-gray-300">COOKING</span><span className="bg-gray-700 px-2 py-0.5 rounded-full text-lg font-mono">{activeOrders.length}</span></h1>
           <button onClick={fetchOrders} className="bg-gray-700 hover:bg-gray-600 px-3 py-0.5 rounded border border-gray-500 ml-1 transition active:scale-95 text-[10px]">REFRESH</button>
         </div>
+        <div role="status" className="mb-2 rounded bg-gray-900 p-2 text-sm">{loading ? '読み込み中…' : '最終更新: ' + (lastUpdated || '未取得')}<p className="text-red-300">{fetchError || operationError}</p><button onClick={fetchOrders}>再取得・再試行</button></div>
         <div className="flex-1 overflow-y-auto pr-1 pb-1">
-          {activeOrders.length === 0 ? <div className="flex flex-col justify-center items-center h-full text-gray-600"><p className="text-3xl font-black opacity-20 tracking-widest">NO ACTIVE ORDERS</p></div> : 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 gap-3 pb-20">{activeOrders.map((order) => <div key={order._id} className="min-h-[350px] h-auto"><OrderTicket order={order} onComplete={(id: string, num: string) => updateStatus(id, num, 'completed')} onPending={(id: string, num: string) => updateStatus(id, num, 'pending')} /></div>)}</div>
+          {activeOrders.length === 0 ? <div className="flex flex-col justify-center items-center h-full text-gray-600"><p className="text-3xl font-black opacity-20 tracking-widest">{loading ? '読み込み中…' : fetchError ? '取得できません' : '調理中の注文はありません'}</p></div> :
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 gap-3 pb-20">{activeOrders.map((order) => <div key={order._id} className="min-h-[350px] h-auto"><OrderTicket busy={busy.includes(order._id)} order={order} onComplete={(id: string, num: string) => updateStatus(id, num, 'completed')} onPending={(id: string, num: string) => updateStatus(id, num, 'pending')} /></div>)}</div>
           }
         </div>
       </div>
       <div className="w-72 bg-gray-900 border-l border-gray-700 flex flex-col shadow-2xl h-full">
         <div className="p-3 bg-gray-900 border-b border-gray-700"><h2 className="text-lg font-bold text-orange-400 flex items-center gap-2"><span>⚠️</span> PENDING ({pendingOrders.length})</h2></div>
-        <div className="flex-1 overflow-y-auto p-2 space-y-3 bg-gray-900/50">{pendingOrders.map((order) => <div key={order._id} className="min-h-[250px] h-auto"><OrderTicket order={order} onComplete={(id: string, num: string) => updateStatus(id, num, 'completed')} onPending={(id: string, num: string) => updateStatus(id, num, 'active')} isPendingMode={true} /></div>)}</div>
+        <div className="flex-1 overflow-y-auto p-2 space-y-3 bg-gray-900/50">{pendingOrders.map((order) => <div key={order._id} className="min-h-[250px] h-auto"><OrderTicket busy={busy.includes(order._id)} order={order} onComplete={(id: string, num: string) => updateStatus(id, num, 'completed')} onPending={(id: string, num: string) => updateStatus(id, num, 'active')} isPendingMode={true} /></div>)}</div>
       </div>
     </div>
   );

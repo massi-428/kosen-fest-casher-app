@@ -24,6 +24,8 @@ const SettingSchema = new Schema({
     type: [String],
     default: ['現金', 'クレジットカード', 'PayPay', '交通系IC'],
   },
+  cashCalculationEnabled: { type: Boolean, default: false, required: true },
+  cashPaymentMethod: { type: String, default: '現金', required: true },
   customizations: {
     type: [{
       name: String,

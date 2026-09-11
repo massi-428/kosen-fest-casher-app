@@ -5,6 +5,7 @@ const ProductSchema = new Schema({
   storeId: { type: String, required: false, index: true },
   name: { type: String, required: true },
   price: { type: Number, required: true },
+  isAvailable: { type: Boolean, default: true, required: true },
 }, { timestamps: true });
 
 if (process.env.NODE_ENV !== 'production') delete models.Product;
