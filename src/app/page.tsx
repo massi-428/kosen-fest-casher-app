@@ -16,21 +16,16 @@ export default function Home() {
   
   return (
     <div className="flex flex-col items-center justify-center min-h-screen bg-gray-50 p-4 font-sans">
-      
-      {/* 画像エリア: エラーがない場合のみ表示 */}
-      {!imageError && (
-        <div className="mb-4">
-          <Image 
-            src="/image/ROOTINE_Logo_color.png" 
-            alt="ROOTINE Logo"
-            width={300}
-            height={100}
-            priority
-            onError={() => setImageError(true)} // 読み込めなかったら非表示にする
-            style={{ maxWidth: '100%', height: 'auto' }}
-          />
-        </div>
-      )}
+      <div className="mb-4">
+        <Image 
+          src="/image/ROOTINE_logo_color.png"
+          alt="ROOTINE Logo"
+          width={300}
+          height={100}
+          priority
+          style={{ maxWidth: '100%', height: 'auto' }}
+        />
+      </div>
 
       {/* タイトルテキスト */}
       <RootineLogo className="text-8xl text-gray-800 px-3 py-2 mb-8 tracking-tighter" />
