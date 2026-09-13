@@ -23,16 +23,28 @@ if (!cached) {
 const mongooseCache = cached;
 
 async function connectToDatabase() {
-  if (mongooseCache.conn) {
+  if (mongooseCache.conn && mongoose.connection.readyState === 1) {
     return mongooseCache.conn;
+  }
+
+  // Atlasの一時的なDNS・ネットワーク切断後は、解決済み／失敗済みの
+  // Promiseを使い回さず、次のAPIリクエストで接続を作り直す。
+  if (mongooseCache.conn || (mongooseCache.promise && mongoose.connection.readyState === 0)) {
+    mongooseCache.conn = null;
+    mongooseCache.promise = null;
   }
 
   if (!mongooseCache.promise) {
     const opts = {
       bufferCommands: false,
+      serverSelectionTimeoutMS: 15000,
+      maxPoolSize: 10,
+      minPoolSize: 0,
+      ...(process.env.MONGODB_DB ? { dbName: process.env.MONGODB_DB } : {}),
     };
-    mongooseCache.promise = mongoose.connect(MONGODB_URI!, opts).then((mongoose) => {
-      return mongoose;
+    mongooseCache.promise = mongoose.connect(MONGODB_URI!, opts).catch((error) => {
+      mongooseCache.promise = null;
+      throw error;
     });
   }
   mongooseCache.conn = await mongooseCache.promise;
