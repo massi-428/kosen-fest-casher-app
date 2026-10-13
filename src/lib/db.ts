@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import { attachDatabasePool } from '@vercel/functions';
 
 const MONGODB_URI = process.env.MONGODB_URI;
 
@@ -9,6 +10,7 @@ if (!MONGODB_URI) {
 type MongooseCache = {
   conn: typeof mongoose | null;
   promise: Promise<typeof mongoose> | null;
+  attachedClients?: WeakSet<object>;
 };
 
 const globalWithMongoose = global as typeof globalThis & {
@@ -23,32 +25,54 @@ if (!cached) {
 const mongooseCache = cached;
 
 async function connectToDatabase() {
+  // Initial connection and reconnect attempts must be shared, even while disconnected.
+  if (mongooseCache.promise) return mongooseCache.promise;
+
   if (mongooseCache.conn && mongoose.connection.readyState === 1) {
     return mongooseCache.conn;
   }
 
-  // Atlasの一時的なDNS・ネットワーク切断後は、解決済み／失敗済みの
-  // Promiseを使い回さず、次のAPIリクエストで接続を作り直す。
-  if (mongooseCache.conn || (mongooseCache.promise && mongoose.connection.readyState === 0)) {
-    mongooseCache.conn = null;
-    mongooseCache.promise = null;
-  }
+  mongooseCache.conn = null;
 
   if (!mongooseCache.promise) {
     const opts = {
       bufferCommands: false,
       serverSelectionTimeoutMS: 15000,
-      maxPoolSize: 10,
+      maxPoolSize: 5,
       minPoolSize: 0,
+      maxIdleTimeMS: 10000,
       ...(process.env.MONGODB_DB ? { dbName: process.env.MONGODB_DB } : {}),
     };
-    mongooseCache.promise = mongoose.connect(MONGODB_URI!, opts).catch((error) => {
+    mongooseCache.promise = (async () => {
+      // readyState=0 can mean a temporary outage: the old client may still be
+      // monitoring servers. Close it before Mongoose replaces it with a new one.
+      // Include cleanup in the shared promise, and do not reconnect if it fails.
+      const previousClient = mongoose.connection.getClient();
+      if (previousClient) {
+        await previousClient.close();
+        // Also reset Mongoose's state, including recovery during client.close().
+        // Closing the client directly first makes failed cleanup retryable even
+        // when Mongoose has already marked its own close operation as called.
+        await mongoose.connection.close();
+      }
+
+      const connection = await mongoose.connect(MONGODB_URI!, opts);
+      // Register once per client, not once per request. Local development needs no hook.
+      if (process.env.VERCEL === '1') {
+        const client = connection.connection.getClient();
+        const attached = mongooseCache.attachedClients ??= new WeakSet<object>();
+        if (!attached.has(client)) {
+          attachDatabasePool(client);
+          attached.add(client);
+        }
+      }
+      mongooseCache.conn = connection;
+      return connection;
+    })().finally(() => {
       mongooseCache.promise = null;
-      throw error;
     });
   }
-  mongooseCache.conn = await mongooseCache.promise;
-  return mongooseCache.conn;
+  return mongooseCache.promise;
 }
 
 export default connectToDatabase;

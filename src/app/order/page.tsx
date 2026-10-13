@@ -324,6 +324,10 @@ export default function OrderPage() {
 
   const handleDeleteProduct = (e: React.MouseEvent, id: string) => {
     e.stopPropagation();
+    if (products.length <= 1) {
+      toggleModal('result', true, { title: '削除できません', message: '商品は0件にできません。新しい商品を追加してから削除してください。', type: 'error' });
+      return;
+    }
     toggleModal('confirm', true, { message: 'この商品を削除しますか？', onConfirm: async () => {
       toggleModal('confirm', false);
       const res = await apiFetch('/api/products', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ _id: id }) });
@@ -334,7 +338,9 @@ export default function OrderPage() {
         setFormPrice('');
         showToast('商品を削除しました', 'success', '変更完了');
       } else {
-        toggleModal('result', true, { title: 'エラー', message: '削除に失敗しました', type: 'error' });
+        const data = await res.json().catch(() => ({}));
+        toggleModal('result', true, { title: '削除できません', message: data.message || '削除に失敗しました', type: 'error' });
+        void fetchProducts();
       }
     } });
   };

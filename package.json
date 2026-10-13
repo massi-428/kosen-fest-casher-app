@@ -11,6 +11,7 @@
                     "test:db":  "node --test tests/db-integration.test.mjs"
                 },
     "dependencies":  {
+                         "@vercel/functions": "^3.9.11",
                          "bcryptjs":  "^3.0.3",
                          "mongoose":  "^8.20.0",
                          "next":  "^15.5.10",

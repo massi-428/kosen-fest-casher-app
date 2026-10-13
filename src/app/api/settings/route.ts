@@ -155,11 +155,17 @@ export async function POST(request: Request) {
       updateData.cancelPassword = body.cancelPassword;
     }
 
+    // MongoDB rejects paths present in both $set and $setOnInsert, even on
+    // existing settings. Defaults only belong to fields not supplied by the user.
+    const insertDefaults = Object.fromEntries(
+      Object.entries(defaultSetting(context.userId, context.storeId))
+        .filter(([key]) => !Object.hasOwn(updateData, key)),
+    );
     const updated = await Setting.findOneAndUpdate(
       { storeId: context.storeId, key: 'app_config' },
       {
         $set: updateData,
-        $setOnInsert: defaultSetting(context.userId, context.storeId),
+        $setOnInsert: insertDefaults,
       },
       { new: true, upsert: true, setDefaultsOnInsert: true },
     );
