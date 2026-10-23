@@ -26,3 +26,11 @@ export const isShiftDue = (start: string, now: number) => {
   const time = new Date(start).getTime();
   return time <= now && time > now - 60000;
 };
+
+export function festivalShift(day: unknown, start: unknown, end: unknown) {
+  if ((day !== 1 && day !== 2) || typeof start !== 'string' || typeof end !== 'string') return null;
+  if (!/^(1[0-5]:(00|30)|16:00)$/.test(start) || !/^(1[0-5]:(00|30)|16:00)$/.test(end)) return null;
+  return start < end ? { festivalDay: day, startTime: start, endTime: end } : null;
+}
+
+export const attendanceToday = () => new Date(Date.now() + 9 * 3600000).toISOString().slice(0, 10);

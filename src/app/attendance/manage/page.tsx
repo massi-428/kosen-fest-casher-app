@@ -4,24 +4,26 @@ import Link from 'next/link';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { requestJson, postJson } from '@/lib/client-api';
 import { attendanceTime, durationLabel } from '@/lib/attendance';
-import { HalfHourDateTime } from '@/components/common/HalfHourDateTime';
 
 type Employee = { _id: string; personalId: number; name: string; archivedAt?: string | null };
 type Record = { _id: string; personalId: number; clockIn: string; clockOut: string | null };
-type Shift = { _id: string; personalId: number; start: string; end: string };
-type Data = { employees: Employee[]; records: Record[]; shifts: Shift[]; totals: { _id: number; milliseconds: number }[] };
+type Shift = { _id: string; personalId: number; start?: string; end?: string; festivalDay?: number; startTime?: string; endTime?: string };
+type Data = { employees: Employee[]; records: Record[]; shifts: Shift[]; totals: { _id: number; milliseconds: number }[]; notificationDay: number };
 const field = 'w-full border border-gray-300 rounded-xl px-3 py-2 bg-white text-gray-900';
 const button = 'rounded-xl bg-gray-900 text-white px-3 py-2 font-bold disabled:opacity-40';
 
 export default function AttendanceManagePage() {
-  const [data, setData] = useState<Data>({ employees: [], records: [], shifts: [], totals: [] });
+  const [data, setData] = useState<Data>({ employees: [], records: [], shifts: [], totals: [], notificationDay: 0 });
   const [editingId, setEditingId] = useState<string | null>(null);
   const [nextId, setNextId] = useState('');
   const [name, setName] = useState('');
   const names = name.split(/\r?\n/).map(value => value.trim()).filter(Boolean);
   const [shiftId, setShiftId] = useState('');
-  const [start, setStart] = useState('');
-  const [end, setEnd] = useState('');
+  const [day, setDay] = useState(1);
+  const [start, setStart] = useState('10:00');
+  const [end, setEnd] = useState('16:00');
+  const [editingShift, setEditingShift] = useState<string | null>(null);
+  const shiftForm = useRef<HTMLFormElement>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
@@ -63,26 +65,29 @@ export default function AttendanceManagePage() {
         </section>
         <section className="bg-white border rounded-xl p-3 space-y-2">
           <h2 className="text-lg font-bold">シフトを事前設定</h2><p className="text-sm text-gray-500">出勤予定時刻に、未出勤のスタッフを注文画面で通知します。</p>
-          <form className="space-y-3" onSubmit={e => { e.preventDefault(); void run(async () => {
-            const result = await postJson('/api/attendance', { action: 'shift', personalId: shiftId, start, end });
-            setMessage(result.message); await refresh();
+          <div className="rounded-lg bg-gray-50 p-2 space-y-2"><p className="text-xs font-bold">本日の通知対象（日付が変わると停止）</p><div className="flex gap-2">{[0, 1, 2].map(value => <button key={value} type="button" disabled={busy} aria-pressed={data.notificationDay === value} className={`rounded-lg border px-3 py-1 text-sm ${data.notificationDay === value ? 'bg-gray-900 text-white' : 'bg-white'}`} onClick={() => void run(async () => { const result = await postJson('/api/attendance', { action: 'notificationDay', day: value }); setMessage(result.message); await refresh(); })}>{value ? `${value}日目` : '停止'}</button>)}</div></div>
+          <form ref={shiftForm} className="space-y-3" onSubmit={e => { e.preventDefault(); void run(async () => {
+            const result = await postJson('/api/attendance', { action: editingShift ? 'updateShift' : 'shift', shiftId: editingShift, personalId: shiftId, day, start, end });
+            setMessage(result.message); setEditingShift(null); await refresh();
           }); }}>
-            <label className="block">スタッフ<select className={`${field} mt-2`} required disabled={busy} value={shiftId} onChange={e => setShiftId(e.target.value)}><option value="">選択してください</option>{currentEmployees.map(e => <option key={e.personalId} value={e.personalId}>{e.personalId} · {e.name}</option>)}</select></label>
-            <HalfHourDateTime label="出勤予定" value={start} onChange={setStart} disabled={busy} />
-            <HalfHourDateTime label="退勤予定" value={end} onChange={setEnd} disabled={busy} />
-            <button className={button} disabled={busy}>シフトを登録</button>
+            <fieldset disabled={busy}><legend className="text-sm mb-1">日程</legend><div className="flex gap-2">{[1, 2].map(value => <button key={value} type="button" aria-pressed={day === value} onClick={() => setDay(value)} className={`flex-1 rounded-lg border py-2 font-bold ${day === value ? 'bg-yellow-300 border-yellow-500' : 'bg-white'}`}>{value}日目</button>)}</div></fieldset>
+            <label className="block">スタッフID<input className={`${field} mt-1`} inputMode="numeric" pattern="[0-9]+" required readOnly={!!editingShift} disabled={busy} value={shiftId} onChange={e => setShiftId(e.target.value)} placeholder="例：1" /></label>
+            {shiftId && <p className="text-sm" role="status">{currentEmployees.find(e => e.personalId === Number(shiftId))?.name || '登録済みのスタッフIDを入力してください'}</p>}
+            <div className="grid grid-cols-2 gap-2"><label>開始時刻<input className={`${field} mt-1`} type="time" min="10:00" max="15:30" step={1800} required disabled={busy} value={start} onChange={e => setStart(e.target.value)} /></label><label>終了時刻<input className={`${field} mt-1`} type="time" min="10:30" max="16:00" step={1800} required disabled={busy} value={end} onChange={e => setEnd(e.target.value)} /></label></div>
+            <p className="text-xs text-gray-500">10:00〜16:00・30分刻み。時刻はキーボードで入力できます。</p>
+            <div className="flex gap-2"><button className={button} disabled={busy || !currentEmployees.some(e => e.personalId === Number(shiftId))}>{editingShift ? 'シフトを更新' : 'シフトを登録'}</button>{editingShift && <button type="button" disabled={busy} onClick={() => setEditingShift(null)}>編集をやめる</button>}</div>
           </form>
         </section>
       </div>
       <section className="bg-white border rounded-xl p-3 space-y-2"><h2 className="text-lg font-bold">勤務時間の合計</h2><p className="text-sm text-gray-500">全期間の退勤済み記録を集計しています。出勤中の時間は含みません。休憩時間の控除はありません。</p>
         <ul className="grid md:grid-cols-3 gap-x-4">{data.employees.map(e => <li key={e._id} className="py-2 border-b flex justify-between gap-3 text-sm"><span>ID {e.personalId} · {e.name}{e.archivedAt ? '（削除済み）' : ''}</span><span className="font-bold shrink-0">{durationLabel(data.totals.find(t => t._id === e.personalId)?.milliseconds || 0)}</span></li>)}</ul>
       </section>
-      <section className="bg-white border rounded-xl p-3 space-y-2"><h2 className="text-lg font-bold">今後のシフト</h2><p className="text-sm text-gray-500">変更する場合は削除して再登録してください。</p>
+      <section className="bg-white border rounded-xl p-3 space-y-2"><h2 className="text-lg font-bold">登録済みシフト</h2><p className="text-sm text-gray-500">「編集」で日程・勤務時間を変更できます。</p>
         {!data.shifts.length && <p>登録されたシフトはありません。</p>}
-        <ul className="divide-y">{data.shifts.map(s => <li key={s._id} className="py-2 flex flex-wrap gap-3 justify-between items-center"><div><p className="font-bold">{s.personalId} · {staffName(s.personalId)}</p><p>{attendanceTime(s.start)} 〜 {attendanceTime(s.end)}</p></div><button className="text-red-700 underline disabled:opacity-40" disabled={busy} onClick={() => {
+        <ul className="divide-y">{data.shifts.map(s => <li key={s._id} className="py-2 flex flex-wrap gap-3 justify-between items-center"><div><p className="font-bold">{s.personalId} · {staffName(s.personalId)}</p><p>{s.festivalDay ? `${s.festivalDay}日目 · ${s.startTime}〜${s.endTime}` : `旧設定：${s.start ? attendanceTime(s.start) : ''}〜${s.end ? attendanceTime(s.end) : ''}（編集して日程を選択してください）`}</p></div><div className="flex gap-3"><button className="underline" disabled={busy} onClick={() => { setEditingShift(s._id); setShiftId(String(s.personalId)); setDay(s.festivalDay || 1); setStart(s.startTime || '10:00'); setEnd(s.endTime || '16:00'); shiftForm.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }); }}>編集</button><button className="text-red-700 underline disabled:opacity-40" disabled={busy} onClick={() => {
           if (!window.confirm('このシフトを削除しますか？')) return;
           void run(async () => { const result = await postJson('/api/attendance', { action: 'deleteShift', personalId: s.personalId, shiftId: s._id }); setMessage(result.message); await refresh(); });
-        }}>削除</button></li>)}</ul>
+        }}>削除</button></div></li>)}</ul>
       </section>
       <section className="bg-white border rounded-xl p-3 space-y-2"><h2 className="text-lg font-bold">打刻履歴（最新100件）</h2><div className="overflow-x-auto"><table className="w-full text-left whitespace-nowrap"><thead><tr><th className="p-3">スタッフ</th><th className="p-3">出勤</th><th className="p-3">退勤</th></tr></thead><tbody>{data.records.map(r => <tr key={r._id} className="border-t"><td className="p-3">{r.personalId} · {staffName(r.personalId)}</td><td className="p-3">{attendanceTime(r.clockIn)}</td><td className="p-3">{r.clockOut ? attendanceTime(r.clockOut) : '出勤中'}</td></tr>)}</tbody></table></div>{!data.records.length && <p>打刻履歴はありません。</p>}</section>
     </div>

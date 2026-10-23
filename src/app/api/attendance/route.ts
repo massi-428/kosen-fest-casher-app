@@ -2,8 +2,8 @@ import { NextResponse } from 'next/server';
 import connectToDatabase from '@/lib/db';
 import { getActiveStoreContext } from '@/lib/store';
 import { unauthorizedResponse } from '@/lib/auth';
-import { Employee, EmployeeCounter, AttendanceRecord, Shift } from '@/models/Attendance';
-import { personalIdFrom, shiftDates } from '@/lib/attendance';
+import { Employee, EmployeeCounter, AttendanceRecord, Shift, FestivalSchedule } from '@/models/Attendance';
+import { personalIdFrom, festivalShift, attendanceToday } from '@/lib/attendance';
 import { isValidObjectId } from '@/lib/validation';
 
 export const dynamic = 'force-dynamic';
@@ -33,7 +33,11 @@ export async function GET(request: Request) {
     }
     if (params.get('mode') === 'reminders') {
       const now = new Date();
-      const shifts = await Shift.find({ storeId, start: { $gte: new Date(now.getTime() - 60000), $lte: new Date(now.getTime() + 15 * 60000) } }).sort({ start: 1 }).lean();
+      const today = attendanceToday();
+      const festival = await FestivalSchedule.findById(storeId);
+      if (!festival?.notificationDay || festival.notificationDate !== today) return NextResponse.json([]);
+      const scheduled = await Shift.find({ storeId, festivalDay: festival.notificationDay }).sort({ startTime: 1 }).lean();
+      const shifts = scheduled.map(s => ({ ...s, personalId: Number(s.personalId), start: new Date(`${today}T${s.startTime}:00+09:00`) })).filter(s => s.start.getTime() >= now.getTime() - 60000 && s.start.getTime() <= now.getTime() + 15 * 60000);
       const ids = shifts.map(s => s.personalId);
       const [employees, active] = await Promise.all([
         Employee.find({ storeId, personalId: { $in: ids } }).lean(),
@@ -41,16 +45,17 @@ export async function GET(request: Request) {
       ]);
       return NextResponse.json(shifts.filter(s => !active.some(a => a.personalId === s.personalId)).map(s => ({ ...s, name: employees.find(e => e.personalId === s.personalId)?.name || '' })));
     }
-    const [employees, records, shifts, totals] = await Promise.all([
+    const [employees, records, shifts, totals, festival] = await Promise.all([
       Employee.find({ storeId }).sort({ personalId: 1 }),
       AttendanceRecord.find({ storeId }).sort({ clockIn: -1 }).limit(100),
-      Shift.find({ storeId, end: { $gte: new Date() } }).sort({ start: 1 }),
+      Shift.find({ storeId }).sort({ festivalDay: 1, startTime: 1, start: 1 }),
       AttendanceRecord.aggregate([
         { $match: { storeId, clockOut: { $ne: null } } },
         { $group: { _id: '$personalId', milliseconds: { $sum: { $max: [0, { $subtract: ['$clockOut', '$clockIn'] }] } } } },
       ]),
+      FestivalSchedule.findById(storeId),
     ]);
-    return NextResponse.json({ employees, records, shifts, totals });
+    return NextResponse.json({ employees, records, shifts, totals, notificationDay: festival?.notificationDate === attendanceToday() ? festival.notificationDay : 0 });
   } catch { return reply('勤怠情報を取得できませんでした', 500); }
 }
 
@@ -62,6 +67,11 @@ export async function POST(request: Request) {
     const { storeId } = context;
     const body = await request.json();
     if (!body || typeof body !== 'object' || Array.isArray(body)) return reply('入力が不正です');
+    if (body.action === 'notificationDay') {
+      if (![0, 1, 2].includes(body.day)) return reply('通知対象を正しく選択してください');
+      await FestivalSchedule.findOneAndUpdate({ _id: storeId }, { $set: { notificationDay: body.day, notificationDate: attendanceToday() } }, { upsert: true });
+      return reply('本日の通知対象を変更しました', 200);
+    }
     if (body.action === 'employee' || body.action === 'employees') {
       const names: unknown[] = body.action === 'employee' ? [body.name] : body.names;
       if (!Array.isArray(names) || names.length < 1 || names.length > 200) return reply('スタッフは1〜200人で登録してください');
@@ -75,13 +85,11 @@ export async function POST(request: Request) {
     }
     const personalId = personalIdFrom(body.personalId);
     if (!personalId) return reply('個人IDを正しく入力してください');
-    if (!['clockIn', 'clockOut', 'shift', 'deleteShift', 'changeId', 'deleteEmployee'].includes(body.action)) return reply('操作が不正です');
+    if (!['clockIn', 'clockOut', 'shift', 'updateShift', 'deleteShift', 'changeId', 'deleteEmployee'].includes(body.action)) return reply('操作が不正です');
     if (body.action === 'deleteEmployee' && !isValidObjectId(body.employeeId)) return reply('スタッフIDが不正です');
     const newPersonalId = personalIdFrom(body.newPersonalId);
     if (body.action === 'changeId' && (!newPersonalId || newPersonalId >= Number.MAX_SAFE_INTEGER || !isValidObjectId(body.employeeId))) return reply('新しい個人IDを正しく入力してください');
-    const dates = body.action === 'shift' ? shiftDates(body.start, body.end) : null;
-    if (body.action === 'shift' && !dates) return reply('シフトは30分刻みで、終了を開始より後に設定してください');
-    if (body.action === 'deleteShift' && !isValidObjectId(body.shiftId)) return reply('シフトIDが不正です');
+    if (['deleteShift', 'updateShift'].includes(body.action) && !isValidObjectId(body.shiftId)) return reply('シフトIDが不正です');
     const result = await Employee.db.transaction(async session => {
       // Serialize changes for each employee, including simultaneous punches and overlapping shifts.
       const employee = await Employee.findOneAndUpdate({ storeId, personalId, archivedAt: null, ...(body.employeeId ? { _id: body.employeeId } : {}) }, { $inc: { revision: 1 } }, { session });
@@ -90,7 +98,7 @@ export async function POST(request: Request) {
         const active = await AttendanceRecord.findOne({ storeId, personalId, clockOut: null }).session(session);
         if (active) return { message: '出勤中のスタッフは退勤してから削除してください', status: 409 };
         await Employee.updateOne({ _id: employee._id, storeId }, { $set: { archivedAt: new Date() } }, { session });
-        await Shift.deleteMany({ storeId, personalId, end: { $gte: new Date() } }, { session });
+        await Shift.deleteMany({ storeId, personalId, $or: [{ festivalDay: { $in: [1, 2] } }, { end: { $gte: new Date() } }] }, { session });
         return { message: 'スタッフを削除しました。打刻履歴と勤務時間は保存されています', status: 200 };
       }
       if (body.action === 'changeId' && newPersonalId) {
@@ -104,9 +112,15 @@ export async function POST(request: Request) {
         await Shift.updateMany({ storeId, personalId }, { $set: { personalId: newPersonalId } }, { session });
         return { message: `個人IDを${newPersonalId}に変更しました`, status: 200 };
       }
-      if (body.action === 'shift' && dates) {
-        const overlap = await Shift.exists({ storeId, personalId, start: { $lt: dates.end }, end: { $gt: dates.start } }).session(session);
+      if (body.action === 'shift' || body.action === 'updateShift') {
+        const dates = festivalShift(body.day, body.start, body.end);
+        if (!dates) return { message: '1日目・2日目を選び、10:00〜16:00の30分刻みで終了を開始より後に設定してください', status: 400 };
+        const overlap = await Shift.exists({ storeId, personalId, festivalDay: dates.festivalDay, ...(body.action === 'updateShift' ? { _id: { $ne: body.shiftId } } : {}), startTime: { $lt: dates.endTime }, endTime: { $gt: dates.startTime } }).session(session);
         if (overlap) return { message: '既存のシフトと時間が重なっています', status: 409 };
+        if (body.action === 'updateShift') {
+          const updated = await Shift.findOneAndUpdate({ _id: body.shiftId, storeId, personalId }, { $set: dates, $unset: { start: 1, end: 1 } }, { session });
+          return { message: updated ? 'シフトを更新しました' : 'シフトが見つかりません', status: updated ? 200 : 404 };
+        }
         await Shift.create([{ storeId, personalId, ...dates }], { session });
         return { message: 'シフトを登録しました', status: 201 };
       }

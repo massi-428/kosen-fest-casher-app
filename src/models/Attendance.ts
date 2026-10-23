@@ -19,12 +19,25 @@ recordSchema.index({ storeId: 1, personalId: 1 }, { unique: true, partialFilterE
 const shiftSchema = new Schema({
   storeId: { type: String, required: true },
   personalId: { type: Number, required: true },
-  start: { type: Date, required: true },
-  end: { type: Date, required: true },
+  start: { type: Date },
+  end: { type: Date },
+  festivalDay: { type: Number, enum: [1, 2] },
+  startTime: String,
+  endTime: String,
 });
 shiftSchema.index({ storeId: 1, start: 1 });
 
 export const Employee = models.AttendanceEmployee || model('AttendanceEmployee', employeeSchema);
 export const EmployeeCounter = models.EmployeeCounter || model('EmployeeCounter', counterSchema);
 export const AttendanceRecord = models.AttendanceRecord || model('AttendanceRecord', recordSchema);
+if (process.env.NODE_ENV !== 'production') delete models.AttendanceShift;
 export const Shift = models.AttendanceShift || model('AttendanceShift', shiftSchema);
+
+const festivalSchema = new Schema({
+  _id: String,
+  notificationDay: { type: Number, enum: [0, 1, 2], default: 0 },
+  notificationDate: String,
+  revision: { type: Number, default: 0 },
+});
+if (process.env.NODE_ENV !== 'production') delete models.FestivalSchedule;
+export const FestivalSchedule = models.FestivalSchedule || model('FestivalSchedule', festivalSchema);

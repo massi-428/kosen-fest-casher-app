@@ -1,10 +1,9 @@
-﻿"use client";
+"use client";
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { HamburgerMenu as SharedHamburgerMenu } from '@/components/common/HamburgerMenu';
 import {
   ConfirmModal as SharedConfirmModal,
-  DetailModal as SharedDetailModal,
   LostTicketModal as SharedLostTicketModal,
   PaymentModal as SharedPaymentModal,
   ResultModal as SharedResultModal,
@@ -44,8 +43,7 @@ type OrderItem = {
 type Product = { _id: string; name: string; price: number; isAvailable?: boolean };
 type ModalData = Partial<
   React.ComponentProps<typeof SharedResultModal> &
-  React.ComponentProps<typeof SharedConfirmModal> &
-  React.ComponentProps<typeof SharedDetailModal>
+  React.ComponentProps<typeof SharedConfirmModal>
 > & { index?: number };
 
 export default function OrderPage() {
@@ -87,7 +85,7 @@ export default function OrderPage() {
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [formName, setFormName] = useState('');
   const [formPrice, setFormPrice] = useState('');
-  const [modals, setModals] = useState({ result: false, confirm: false, detail: false, payment: false, lost: false });
+  const [modals, setModals] = useState({ result: false, confirm: false, payment: false, lost: false });
   const [modalData, setModalData] = useState<ModalData>({});
   const [toast, setToast] = useState<{ show: boolean; message: string; title?: string; type: 'success' | 'error' }>({ show: false, message: '', type: 'success' });
 
@@ -368,19 +366,6 @@ export default function OrderPage() {
       <SharedConfirmModal isOpen={modals.confirm} message={modalData.message || ''} onConfirm={modalData.onConfirm || (() => {})} onCancel={closeConfirmModal} confirmLabel={modalData.confirmLabel} cancelLabel={modalData.cancelLabel} />
       <Toast show={toast.show} message={toast.message} title={toast.title} type={toast.type} onClose={() => setToast((prev) => ({ ...prev, show: false }))} />
       {identity && <ShiftReminder key={identity.storeId} storeId={identity.storeId} paused={toast.show} />}
-      <SharedDetailModal isOpen={modals.detail} productName={modalData.productName || ''} currentDetail={modalData.currentDetail} currentOptions={modalData.currentOptions} optionsList={customizationOptions} onSave={(detail: string, options: CustomOption[]) => {
-        setCartItems((prev) => {
-          const targetIndex = modalData.index ?? -1;
-          const target = prev[targetIndex];
-          if (!target) return prev;
-          if (target.quantity === 1) return prev.map((item, i) => i === targetIndex ? { ...item, detail, selectedOptions: options } : item);
-          const next = [...prev];
-          next[targetIndex] = { ...target, quantity: target.quantity - 1 };
-          next.splice(targetIndex + 1, 0, { ...target, quantity: 1, detail, selectedOptions: options });
-          return next;
-        });
-        toggleModal('detail', false);
-      }} onClose={() => toggleModal('detail', false)} />
       <SharedPaymentModal isOpen={modals.payment} paymentMethods={quote?.paymentMethods || paymentMethods} totalAmount={quote?.totalAmount ?? totalAmount} cashCalculationEnabled={quote?.cashCalculationEnabled ?? cashCalculationEnabled} cashPaymentMethod={quote?.cashPaymentMethod || cashPaymentMethod} onConfirm={handleOrder} onCancel={returnToCart} />
       <SharedLostTicketModal isOpen={modals.lost} maxTicketNumber={maxTicketNumber} lostTickets={lostTickets} onToggle={toggleLostTicket} onClose={() => toggleModal('lost', false)} />
 
@@ -473,13 +458,28 @@ export default function OrderPage() {
                         <span className="font-black text-gray-800 leading-tight text-sm">{item.productName}{isUnavailable && <span className="ml-2 text-xs text-red-600">売り切れ</span>}</span>
                         <button onClick={() => setCartItems((prev) => prev.filter((_, i) => i !== index))} className="text-red-200 hover:text-red-500 w-6 h-6 flex items-center justify-center rounded-full hover:bg-red-50 transition-colors">x</button>
                       </div>
-                      <button onClick={() => toggleModal('detail', true, { index, productName: item.productName, currentDetail: item.detail, currentOptions: item.selectedOptions })} className="w-full text-left text-[10px] p-2 rounded-xl transition-all border-2 border-dashed bg-[#fff8e1] text-yellow-900 border-yellow-200 hover:bg-yellow-100">
-                        <div className="flex flex-wrap gap-1.5">
-                          {item.selectedOptions?.map((option, i) => <span key={i} className={`px-2 py-0.5 rounded-md font-bold ${option.price < 0 ? 'bg-red-100 text-red-600' : 'bg-orange-100 text-orange-700'}`}>{option.name}{option.price !== 0 ? `(${option.price})` : ''}</span>)}
-                          {item.detail && <span className="font-black">メモ {item.detail}</span>}
-                          {!item.detail && !item.selectedOptions?.length && '+ 詳細設定'}
+                      <div className="w-full p-2 rounded-xl border bg-[#fff8e1] border-yellow-200 space-y-2">
+                        <div className="flex flex-wrap gap-1.5" role="group" aria-label={`${item.productName}のオプション（1点分）`}>
+                          {customizationOptions.filter(option => option.name).map(option => {
+                            const selected = item.selectedOptions?.some(current => current.name === option.name) || false;
+                            return <button key={option.name} type="button" aria-pressed={selected} disabled={!draftReady || !settingsReady || checkoutPhase !== 'editing'} className={`px-2 py-1.5 rounded-lg border text-xs font-bold transition-colors disabled:opacity-40 ${selected ? 'bg-[#f3b928] border-[#d6a11b] text-gray-900' : 'bg-white border-yellow-200 text-gray-600 hover:border-[#f3b928]'}`} onClick={() => setCartItems(prev => {
+                              const target = prev[index];
+                              if (!target) return prev;
+                              const options = target.selectedOptions || [];
+                              const selectedOptions = options.some(current => current.name === option.name) ? options.filter(current => current.name !== option.name) : [...options, option];
+                              if (target.quantity === 1) return prev.map((row, i) => i === index ? { ...row, selectedOptions } : row);
+                              const next = [...prev];
+                              next[index] = { ...target, quantity: target.quantity - 1 };
+                              next.splice(index + 1, 0, { ...target, quantity: 1, selectedOptions });
+                              return next;
+                            })}>{selected ? '✓ ' : ''}{option.name}{option.price !== 0 ? ` (${option.price > 0 ? '+' : ''}${option.price}円)` : ''}</button>;
+                          })}
                         </div>
-                      </button>
+                        <input aria-label={`${item.productName}のメモ（この行の全数量）`} placeholder="メモ（この行の全数量）" value={item.detail || ''} disabled={!draftReady || checkoutPhase !== 'editing'} onChange={event => {
+                          const detail = event.target.value;
+                          setCartItems(prev => prev.map((row, i) => i === index ? { ...row, detail } : row));
+                        }} className="w-full rounded-lg border border-yellow-200 bg-white px-2 py-1.5 text-xs outline-none focus:ring-2 focus:ring-[#f3b928] disabled:opacity-40" />
+                      </div>
                       <div className="flex justify-between items-end">
                         <div className="flex items-center gap-2">
                           <div className="flex items-center bg-gray-100 rounded-xl overflow-hidden border border-gray-100 h-9">

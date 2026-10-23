@@ -2,7 +2,12 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createLoader } from './support/load-ts.mjs';
 
-const { personalIdFrom, shiftDates, durationLabel, isShiftDue } = createLoader()('src/lib/attendance.ts');
+const { personalIdFrom, shiftDates, durationLabel, isShiftDue, festivalShift, attendanceToday } = createLoader()('src/lib/attendance.ts');
+test('festival shifts allow exactly two days and 10–16 in half-hour steps', () => {
+  assert.deepEqual(festivalShift(1, '10:00', '16:00'), { festivalDay: 1, startTime: '10:00', endTime: '16:00' });
+  assert.ok(festivalShift(2, '15:30', '16:00'));
+  for (const [day, start, end] of [[3, '10:00', '11:00'], [0, '10:00', '11:00'], [1, '09:30', '11:00'], [1, '15:00', '16:30'], [1, '10:15', '11:00'], [1, '12:00', '12:00'], [1, '13:00', '12:00']]) assert.equal(festivalShift(day, start, end), null);
+});
 test('shift notifications begin at the scheduled time, never 15 minutes early', () => {
   const start = '2026-10-23T10:00:00+09:00';
   const time = new Date(start).getTime();
@@ -57,10 +62,11 @@ function fixture(authenticated = true) {
     find: filter => { scoped(filter); return { sort: () => ({ lean: async () => records.filter(r => r.clockOut === null) }) }; },
   };
   const Shift = {
-    exists: filter => { scoped(filter); return { session: async () => shifts.some(s => s.personalId === filter.personalId && s.start < filter.start.$lt && s.end > filter.end.$gt) }; },
-    create: async ([value]) => shifts.push(value),
+    exists: filter => { scoped(filter); return { session: async () => shifts.some(s => s.personalId === filter.personalId && s.festivalDay === filter.festivalDay && s._id !== filter._id?.$ne && s.startTime < filter.startTime.$lt && s.endTime > filter.endTime.$gt) }; },
+    create: async ([value]) => shifts.push({ ...value, _id: String(shifts.length + 1).padStart(24, '0') }),
+    findOneAndUpdate: async (filter, update) => { scoped(filter); const shift = shifts.find(s => s._id === filter._id && s.personalId === filter.personalId); if (shift) Object.assign(shift, update.$set); return shift; },
     updateMany: async (filter, update) => { scoped(filter); shifts.filter(s => s.personalId === filter.personalId).forEach(s => Object.assign(s, update.$set)); },
-    deleteMany: async filter => { scoped(filter); for (let i = shifts.length - 1; i >= 0; i--) if (shifts[i].personalId === filter.personalId && shifts[i].end >= filter.end.$gte) shifts.splice(i, 1); },
+    deleteMany: async filter => { scoped(filter); assert.ok(filter.$or); for (let i = shifts.length - 1; i >= 0; i--) if (shifts[i].personalId === filter.personalId) shifts.splice(i, 1); },
   };
   const api = createLoader({
     '@/lib/db': async () => {},
@@ -106,7 +112,7 @@ test('ID changes migrate open and closed records and shifts, reject collisions, 
   await post({ action: 'clockIn', personalId: 1 });
   await post({ action: 'clockOut', personalId: 1, recordId: '1' });
   await post({ action: 'clockIn', personalId: 1 });
-  await post({ action: 'shift', personalId: 1, start: '2026-10-24T10:00', end: '2026-10-24T11:30' });
+  await post({ action: 'shift', personalId: 1, day: 1, start: '10:00', end: '11:30' });
   const change = newPersonalId => post({ action: 'changeId', personalId: 1, employeeId: employee._id, newPersonalId });
   assert.equal((await change(2)).status, 409);
   assert.equal((await change(0)).status, 400);
@@ -125,11 +131,16 @@ test('ID changes migrate open and closed records and shifts, reject collisions, 
 test('overlapping shifts are rejected but adjacent shifts are allowed', async () => {
   const { post, shifts } = fixture();
   await post({ action: 'employee', name: 'Staff' });
-  const shift = (start, end) => post({ action: 'shift', personalId: 1, start: `2026-10-23T${start}`, end: `2026-10-23T${end}` });
+  const shift = (start, end) => post({ action: 'shift', personalId: 1, day: 1, start, end });
   assert.equal((await shift('10:00', '12:00')).status, 201);
   assert.equal((await shift('11:00', '13:00')).status, 409);
   assert.equal((await shift('12:00', '13:00')).status, 201);
   assert.equal(shifts.length, 2);
+  assert.equal((await post({ action: 'shift', personalId: 1, day: 2, start: '10:00', end: '12:00' })).status, 201);
+  assert.equal((await post({ action: 'updateShift', shiftId: shifts[0]._id, personalId: 1, day: 1, start: '10:30', end: '11:30' })).status, 200);
+  assert.equal(shifts[0].startTime, '10:30');
+  assert.equal((await post({ action: 'updateShift', shiftId: shifts[0]._id, personalId: 1, day: 1, start: '11:30', end: '12:30' })).status, 409);
+  assert.equal((await shift('09:30', '10:30')).status, 400);
 });
 test('unauthenticated reads and mutations are denied', async () => {
   const { api, post } = fixture(false);
@@ -138,17 +149,17 @@ test('unauthenticated reads and mutations are denied', async () => {
 });
 
 test('reminders preload upcoming shifts and include the current start minute, excluding clocked-in staff', async () => {
-  const now = Date.now();
-  const shifts = [{ _id: 's1', personalId: 1 }, { _id: 's2', personalId: 2 }];
+  const startTime = new Date(Date.now() + 9 * 3600000).toISOString().slice(11, 16);
+  const shifts = [{ _id: 's1', personalId: 1, startTime }, { _id: 's2', personalId: 2, startTime }];
   const api = createLoader({
     '@/lib/db': async () => {},
     '@/lib/store': { getActiveStoreContext: async () => ({ storeId: 'store-a' }) },
     '@/lib/auth': { unauthorizedResponse: () => Response.json({}, { status: 401 }) },
     '@/models/Attendance': {
+      FestivalSchedule: { findById: async () => ({ notificationDay: 1, notificationDate: attendanceToday() }) },
       Shift: { find: filter => {
         assert.equal(filter.storeId, 'store-a');
-        assert.ok(filter.start.$gte.getTime() >= now - 60000);
-        assert.equal(filter.start.$lte - filter.start.$gte, 16 * 60000);
+        assert.equal(filter.festivalDay, 1);
         return { sort: () => ({ lean: async () => shifts }) };
       } },
       Employee: { find: filter => { assert.equal(filter.storeId, 'store-a'); return { lean: async () => [{ personalId: 1, name: 'A' }, { personalId: 2, name: 'B' }] }; } },
@@ -159,14 +170,17 @@ test('reminders preload upcoming shifts and include the current start minute, ex
     },
   })('src/app/api/attendance/route.ts');
   const result = await api.GET(new Request('http://localhost/api/attendance?mode=reminders'));
-  assert.deepEqual(await result.json(), [{ _id: 's1', personalId: 1, name: 'A' }]);
+  const reminders = await result.json();
+  assert.equal(reminders.length, 1);
+  assert.equal(reminders[0].name, 'A');
+  assert.equal(reminders[0].start, new Date(`${attendanceToday()}T${startTime}:00+09:00`).toISOString());
 });
 
 test('staff deletion rejects active attendance, preserves history and reserves the ID', async () => {
   const { api, post, records, shifts } = fixture();
   const employee = await (await post({ action: 'employee', name: 'Delete me' })).json();
   const remove = () => post({ action: 'deleteEmployee', personalId: 1, employeeId: employee._id });
-  await post({ action: 'shift', personalId: 1, start: '2099-10-23T10:00', end: '2099-10-23T11:00' });
+  await post({ action: 'shift', personalId: 1, day: 1, start: '10:00', end: '11:00' });
   await post({ action: 'clockIn', personalId: 1 });
   assert.equal((await remove()).status, 409);
   assert.equal(shifts.length, 1);

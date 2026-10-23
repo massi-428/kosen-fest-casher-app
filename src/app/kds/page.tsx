@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState, useEffect, useCallback } from 'react';
+import { summarizeKitchenOrders, wrapKitchenText } from '@/lib/kds-display';
 
 const apiFetch = async (url: string, options: RequestInit = {}) => {
   try {
@@ -14,107 +15,82 @@ const apiFetch = async (url: string, options: RequestInit = {}) => {
 };
 
 type CustomOption = { name: string; price: number; };
-type OrderItem = { productName: string; price: number; quantity: number; amount: number; detail?: string; selectedOptions?: CustomOption[]; };
+type OrderItem = { productId?: string; productName: string; price: number; quantity: number; amount: number; detail?: string; selectedOptions?: CustomOption[]; };
 type Order = { revision?: number; _id: string; ticketNumber: string; items: OrderItem[]; totalAmount: number; status: 'active' | 'completed' | 'pending'; createdAt: string; note?: string; };
 type OrderStatus = Order['status'];
 type OrderTicketProps = {
   order: Order;
   onComplete: (orderId: string, ticketNumber: string) => void;
   onPending: (orderId: string, ticketNumber: string) => void;
-  isPendingMode?: boolean;
   busy?: boolean;
 };
 
-const OrderTicket = ({ order, onComplete, onPending, isPendingMode = false, busy = false }: OrderTicketProps) => {
-  const [elapsedTime, setElapsedTime] = useState("");
-  const [alertLevel, setAlertLevel] = useState<"normal" | "warning" | "critical">("normal");
+function Pager({ page, count, onChange, label }: { page: number; count: number; onChange: (page: number) => void; label: string }) {
+  return <div className="flex items-center justify-center gap-2 text-xs shrink-0">
+    <button type="button" aria-label={`${label}の前ページ`} disabled={page === 0} onClick={() => onChange(page - 1)} className="rounded border border-current/20 px-2 py-1 disabled:opacity-25">←</button>
+    <span className="tabular-nums">{page + 1} / {count}</span>
+    <button type="button" aria-label={`${label}の次ページ`} disabled={page + 1 >= count} onClick={() => onChange(page + 1)} className="rounded border border-current/20 px-2 py-1 disabled:opacity-25">→</button>
+  </div>;
+}
 
+const OrderTicket = ({ order, onComplete, onPending, busy = false }: OrderTicketProps) => {
+  const [seconds, setSeconds] = useState(0);
+  const [page, setPage] = useState(0);
+  const [size, setSize] = useState({ columns: 12, rows: 3 });
+  const bodyRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    const updateTimer = () => {
-      const start = new Date(order.createdAt).getTime();
-      const now = new Date().getTime();
-      const diff = Math.floor((now - start) / 1000);
-      const mm = Math.floor(diff / 60).toString().padStart(2, '0');
-      const ss = (diff % 60).toString().padStart(2, '0');
-      setElapsedTime(`${mm}:${ss}`);
-      if (!isPendingMode) {
-        if (diff > 600) setAlertLevel("critical");
-        else if (diff > 300) setAlertLevel("warning");
-        else setAlertLevel("normal");
-      }
-    };
-    updateTimer();
-    const interval = setInterval(updateTimer, 1000);
-    return () => clearInterval(interval);
-  }, [order.createdAt, isPendingMode]);
-
-  const headerStyles = {
-    normal: "bg-gradient-to-br from-blue-600 to-blue-500 shadow-md shadow-blue-200 text-white",
-    warning: "bg-gradient-to-br from-yellow-500 to-amber-500 shadow-md shadow-yellow-200 text-white",
-    critical: "bg-gradient-to-br from-red-600 to-rose-600 shadow-md shadow-red-200 animate-pulse text-white",
-    pending: "bg-gradient-to-br from-gray-500 to-gray-600 shadow-md shadow-gray-200 text-white",
-  };
-  const headerStyle = isPendingMode ? headerStyles.pending : headerStyles[alertLevel];
-
-  return (
-    <div className={`flex flex-col bg-white rounded-2xl shadow-xl overflow-hidden border-2 h-full transition-all duration-300 hover:shadow-2xl ${isPendingMode ? 'border-gray-300 opacity-90 scale-[0.98]' : 'border-gray-100'}`}>
-      <div className={`${headerStyle} p-2 flex justify-between items-center relative overflow-hidden`}>
-        <div className="absolute -top-4 -right-4 w-16 h-16 bg-white opacity-10 rounded-full blur-xl pointer-events-none"></div>
-        <div className="flex items-center gap-2 z-10 pl-1">
-          <span className="text-[10px] font-bold uppercase tracking-widest border border-white/30 px-1.5 py-0.5 rounded shadow-sm backdrop-blur-sm h-fit self-start mt-1 opacity-90">No.</span>
-          <span className="text-5xl font-black leading-none tracking-tighter drop-shadow-sm">{order.ticketNumber}</span>
-        </div>
-        <div className="flex flex-col items-end justify-center z-10 pl-3 border-l border-white/20 ml-2 pr-1">
-          <span className="text-[9px] font-bold uppercase tracking-widest opacity-80 mb-0.5">{isPendingMode ? 'PENDING' : 'TIME'}</span>
-          <span className="text-3xl font-mono font-bold leading-none tracking-tight drop-shadow-sm">{elapsedTime}</span>
-        </div>
-      </div>
-      <div className="flex-1 p-3 bg-gray-50/50 flex flex-col">
-        <ul className="space-y-3 mb-2">
-          {order.items.map((item, idx) => (
-            <li key={idx} className="border-b-2 border-dashed border-gray-200 pb-2 last:border-0">
-              <div className="flex justify-between items-start">
-                <span className="text-3xl font-bold text-gray-800 leading-tight w-3/4 break-words">{item.productName}</span>
-                <span className="bg-gray-800 text-white px-3 py-1 rounded-lg text-3xl font-black min-w-[3.5rem] text-center shadow-sm">{item.quantity}</span>
-              </div>
-              <div className="flex flex-wrap gap-1.5 mt-1">
-                {item.selectedOptions && item.selectedOptions.map((opt, i) => (
-                  <span key={i} className="text-sm bg-orange-50 text-orange-800 px-2 py-1 rounded border border-orange-200 font-bold flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-orange-400"></span>{opt.name}</span>
-                ))}
-                {item.detail && <div className="text-sm text-blue-800 bg-blue-50 px-2 py-1 rounded border border-blue-200 font-bold w-full break-words flex items-start gap-1"><span className="text-blue-400 mt-0.5">✎</span>{item.detail}</div>}
-              </div>
-            </li>
-          ))}
-        </ul>
-        {order.note && <div className="mt-auto pt-3"><div className="p-2 bg-yellow-50 border-2 border-yellow-200 rounded-lg text-gray-800 shadow-sm"><span className="block text-[9px] text-yellow-600 font-black mb-0.5 uppercase tracking-widest">NOTE</span><span className="text-base font-bold">{order.note}</span></div></div>}
-      </div>
-      <div className="p-2 bg-white border-t-2 border-gray-100 flex gap-2 h-20 items-center">
-        {/* ★変更: 保留ボタンをシンプルな棒線二本（一時停止マーク）に変更 */}
-        <button disabled={busy} onClick={() => onPending(order._id, order.ticketNumber)} className={`h-full rounded-xl shadow-sm transition-all transform active:scale-95 text-white font-bold flex-1 flex flex-col justify-center items-center gap-0.5 ${isPendingMode ? 'bg-blue-500 hover:bg-blue-600' : 'bg-gray-400 hover:bg-gray-500'}`}>
-          {isPendingMode ? (
-            // 復帰: 再生マーク風
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8" viewBox="0 0 24 24" fill="currentColor">
-               <path d="M8 5v14l11-7z" />
-            </svg>
-          ) : (
-            // 保留: 棒線二本
-            <div className="flex gap-1.5 h-6 items-center justify-center">
-               <div className="w-2.5 h-6 bg-white rounded-sm"></div>
-               <div className="w-2.5 h-6 bg-white rounded-sm"></div>
-            </div>
-          )}
-          <span className="text-[10px]">{isPendingMode ? '復帰' : '保留'}</span>
-        </button>
-
-        <button disabled={busy} onClick={() => onComplete(order._id, order.ticketNumber)} className="h-full flex-[3] bg-green-600 hover:bg-green-700 active:bg-green-800 text-white rounded-xl shadow-md transition-all transform active:scale-95 flex items-center justify-center gap-2 group"><span className="text-2xl font-black tracking-wider">DONE</span></button>
-      </div>
+    const update = () => setSeconds(Math.max(0, Math.floor((Date.now() - new Date(order.createdAt).getTime()) / 1000)));
+    update(); const timer = setInterval(update, 1000); return () => clearInterval(timer);
+  }, [order.createdAt]);
+  useEffect(() => {
+    const element = bodyRef.current;
+    if (!element) return;
+    const observer = new ResizeObserver(([entry]) => {
+      setSize({ columns: Math.max(1, Math.floor((entry.contentRect.width - 4) / 17)), rows: Math.max(1, Math.floor(entry.contentRect.height / 22)) });
+    });
+    observer.observe(element); return () => observer.disconnect();
+  }, []);
+  const lines = order.items.flatMap(item => [
+    ...wrapKitchenText(`${item.productName} ×${item.quantity}`, size.columns).map(text => ({ text, kind: 'product' })),
+    ...(item.selectedOptions?.length ? wrapKitchenText(item.selectedOptions.map(option => option.name).join(' / '), size.columns).map(text => ({ text, kind: 'option' })) : []),
+    ...(item.detail ? wrapKitchenText(`メモ: ${item.detail}`, size.columns).map(text => ({ text, kind: 'note' })) : []),
+  ]);
+  if (order.note) lines.push(...wrapKitchenText(`注文メモ: ${order.note}`, size.columns).map(text => ({ text, kind: 'note' })));
+  const count = Math.max(1, Math.ceil(lines.length / size.rows));
+  const current = Math.min(page, count - 1);
+  const color = seconds > 600 ? 'bg-red-600' : seconds > 300 ? 'bg-amber-500' : 'bg-blue-600';
+  return <article className="h-full min-h-0 min-w-0 flex flex-col overflow-hidden rounded-xl bg-white text-gray-900 border border-white/15 shadow-sm">
+    <header className={`${color} text-white flex items-center justify-between px-3 py-1.5 shrink-0 gap-2`}>
+      <span className="text-3xl font-black leading-none tabular-nums">{order.ticketNumber}</span>
+      <span className="text-lg font-mono font-bold">{String(Math.floor(seconds / 60)).padStart(2, '0')}:{String(seconds % 60).padStart(2, '0')}</span>
+    </header>
+    <div ref={bodyRef} className="flex-1 min-h-0 overflow-hidden mx-3 mt-1.5" aria-label={`整理券${order.ticketNumber}番の商品内容`}>
+      {lines.slice(current * size.rows, (current + 1) * size.rows).map((line, i) => <p key={`${current}-${i}`} className={`text-base leading-[22px] whitespace-pre ${line.kind === 'product' ? 'font-bold text-gray-900' : line.kind === 'option' ? 'text-orange-800' : 'text-blue-800'}`}>{line.text || '\u00a0'}</p>)}
     </div>
-  );
+    <div className="h-8 flex items-center justify-center shrink-0 text-gray-500">{count > 1 ? <Pager page={current} count={count} onChange={setPage} label={`整理券${order.ticketNumber}番の内容`} /> : <span className="text-[10px]">{order.items.reduce((sum, item) => sum + item.quantity, 0)}点</span>}</div>
+    <footer className="grid grid-cols-[1fr_2fr] gap-1.5 p-1.5 pt-0 shrink-0">
+      <button disabled={busy} onClick={() => onPending(order._id, order.ticketNumber)} className="rounded-md bg-gray-200 text-gray-700 py-1.5 text-xs font-bold disabled:opacity-40">保留</button>
+      <button disabled={busy} onClick={() => onComplete(order._id, order.ticketNumber)} className="rounded-md bg-green-600 text-white py-1.5 text-sm font-black disabled:opacity-40">DONE</button>
+    </footer>
+  </article>;
 };
-
 export default function KitchenDisplaySystem() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
+  const [orderPage, setOrderPage] = useState(0);
+  const [summaryPage, setSummaryPage] = useState(0);
+  const [pendingPage, setPendingPage] = useState(0);
+  const [pendingOpen, setPendingOpen] = useState(false);
+  const pendingButton = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    if (!pendingOpen) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') { setPendingOpen(false); pendingButton.current?.focus(); }
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [pendingOpen]);
 
   const [lastUpdated, setLastUpdated] = useState('');
   const [fetchError, setFetchError] = useState('');
@@ -159,32 +135,64 @@ export default function KitchenDisplaySystem() {
 
   const activeOrders = orders.filter(o => o.status === 'active');
   const pendingOrders = orders.filter(o => o.status === 'pending');
+  const orderPages = Math.max(1, Math.ceil(activeOrders.length / 6));
+  const currentOrderPage = Math.min(orderPage, orderPages - 1);
+  const summary = summarizeKitchenOrders(orders);
+  const summaryPages = Math.max(1, Math.ceil(summary.length / 6));
+  const currentSummaryPage = Math.min(summaryPage, summaryPages - 1);
+  const pendingPages = Math.max(1, Math.ceil(pendingOrders.length / 9));
+  const currentPendingPage = Math.min(pendingPage, pendingPages - 1);
 
   return (
-    <div className="h-screen bg-gray-800 p-2 font-sans text-gray-100 flex gap-2 overflow-hidden">
-      <div className="flex-1 flex flex-col min-w-0">
+    <div className="h-dvh bg-gray-800 p-2 font-sans text-gray-100 flex gap-2 overflow-hidden">
+      <div className="flex-1 flex flex-col min-w-0 min-h-0">
         <div className="flex justify-between items-center mb-2 px-2">
           <h1 className="text-xl font-bold tracking-wider flex items-center gap-3"><span className="bg-blue-600 px-3 py-0.5 rounded text-white shadow-lg border border-blue-400 text-sm">KDS</span><span className="text-gray-300">COOKING</span><span className="bg-gray-700 px-2 py-0.5 rounded-full text-lg font-mono">{activeOrders.length}</span></h1>
         </div>
-        <div className="mb-2 flex items-center justify-between gap-3 rounded bg-gray-900 p-2 text-sm">
+        <div className="mb-2 flex shrink-0 items-center justify-between gap-3 rounded bg-gray-900 px-2 py-1 text-xs">
           <div role="status" className="min-w-0">
             <p>{loading ? '読み込み中…' : '最終更新: ' + (lastUpdated || '未取得')}</p>
             {(fetchError || operationError) && <p className="text-red-300">{fetchError || operationError}</p>}
           </div>
-          <button type="button" onClick={fetchOrders} aria-label="注文を再読み込み" title="再読み込み" className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-gray-600 bg-gray-700 text-gray-100 transition hover:bg-gray-600 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400">
+          <button type="button" onClick={fetchOrders} aria-label="注文を再読み込み" title="再読み込み" className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-gray-600 bg-gray-700 text-gray-100 transition hover:bg-gray-600 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400">
             <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5"><path d="M20 7v5h-5" /><path d="M4 17v-5h5" /><path d="M6.1 7a7 7 0 0 1 11.55-1.65L20 8M4 16l2.35 2.65A7 7 0 0 0 17.9 17" /></svg>
           </button>
         </div>
-        <div className="flex-1 overflow-y-auto pr-1 pb-1">
+        <div className="flex-1 min-h-0 overflow-hidden">
           {activeOrders.length === 0 ? <div className="flex flex-col justify-center items-center h-full text-gray-600"><p className="text-3xl font-black opacity-20 tracking-widest">{loading ? '読み込み中…' : fetchError ? '取得できません' : '調理中の注文はありません'}</p></div> :
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 gap-3 pb-20">{activeOrders.map((order) => <div key={order._id} className="min-h-[350px] h-auto"><OrderTicket busy={busy.includes(order._id)} order={order} onComplete={(id: string, num: string) => updateStatus(id, num, 'completed')} onPending={(id: string, num: string) => updateStatus(id, num, 'pending')} /></div>)}</div>
+            <div className="h-full min-h-0 grid grid-cols-2 grid-rows-3 lg:grid-cols-3 lg:grid-rows-2 gap-2">{activeOrders.slice(currentOrderPage * 6, currentOrderPage * 6 + 6).map((order) => <OrderTicket key={order._id} busy={busy.includes(order._id)} order={order} onComplete={(id: string, num: string) => updateStatus(id, num, 'completed')} onPending={(id: string, num: string) => updateStatus(id, num, 'pending')} />)}</div>
           }
         </div>
+        <div className="pt-2 shrink-0"><Pager page={currentOrderPage} count={orderPages} onChange={setOrderPage} label="調理中の注文" /></div>
       </div>
-      <div className="w-72 bg-gray-900 border-l border-gray-700 flex flex-col shadow-2xl h-full">
-        <div className="p-3 bg-gray-900 border-b border-gray-700"><h2 className="text-lg font-bold text-orange-400 flex items-center gap-2"><span>⚠️</span> PENDING ({pendingOrders.length})</h2></div>
-        <div className="flex-1 overflow-y-auto p-2 space-y-3 bg-gray-900/50">{pendingOrders.map((order) => <div key={order._id} className="min-h-[250px] h-auto"><OrderTicket busy={busy.includes(order._id)} order={order} onComplete={(id: string, num: string) => updateStatus(id, num, 'completed')} onPending={(id: string, num: string) => updateStatus(id, num, 'active')} isPendingMode={true} /></div>)}</div>
-      </div>
+      <aside className="w-48 xl:w-64 shrink-0 min-h-0 rounded-xl bg-gray-900 border border-gray-700 flex flex-col p-3 gap-2" aria-label="商品別注文数量">
+        <h2 className="font-bold text-lg">商品別注文数</h2>
+        <p className="text-xs text-gray-400">全ページの未完了注文を集計</p>
+        <div className="grid grid-cols-3 gap-1 text-center text-[10px] text-gray-400"><span>調理中</span><span>保留</span><span>合計</span></div>
+        <div className="flex-1 min-h-0 grid grid-rows-6 gap-1">
+          {summary.slice(currentSummaryPage * 6, currentSummaryPage * 6 + 6).map(row => <div key={row.key} className="min-h-0 rounded-lg bg-gray-800 px-2 py-1 flex flex-col justify-center">
+            <p className="truncate text-sm font-bold" title={row.name}>{row.name}</p>
+            <div className="grid grid-cols-3 text-center font-black tabular-nums text-xl leading-tight"><span className="text-blue-300">{row.active}</span><span className="text-orange-300">{row.pending}</span><span>{row.active + row.pending}</span></div>
+          </div>)}
+          {summary.length === 0 && <p className="text-xs text-gray-400">{fetchError ? '取得できません' : loading ? '読み込み中…' : '未完了の注文はありません'}</p>}
+        </div>
+        <Pager page={currentSummaryPage} count={summaryPages} onChange={setSummaryPage} label="商品別注文数" />
+        <button ref={pendingButton} type="button" aria-expanded={pendingOpen} aria-controls="pending-orders" onClick={() => setPendingOpen(open => !open)} className="shrink-0 flex justify-between items-center gap-2 rounded-xl border border-orange-300 bg-orange-500 px-3 py-2 text-gray-950 font-black focus-visible:ring-4 focus-visible:ring-orange-200"><span>保留注文</span><span className="text-2xl tabular-nums" aria-live="polite">{pendingOrders.length}</span></button>
+      </aside>
+      {pendingOpen && <section id="pending-orders" aria-labelledby="pending-orders-heading" className="fixed bottom-24 right-4 z-40 w-[min(24rem,calc(100vw-2rem))] max-h-[calc(100dvh-7rem)] flex flex-col rounded-2xl border border-orange-400/50 bg-gray-900 shadow-2xl">
+        <div className="flex items-center justify-between gap-3 border-b border-gray-700 p-3">
+          <h2 id="pending-orders-heading" className="font-bold text-orange-300">保留中の注文（{pendingOrders.length}件）</h2>
+          <button type="button" aria-label="保留中の注文を閉じる" className="rounded-lg px-3 py-2 hover:bg-gray-700 focus-visible:ring-2 focus-visible:ring-orange-300" onClick={() => { setPendingOpen(false); pendingButton.current?.focus(); }}>✕</button>
+        </div>
+        <div className="overflow-hidden p-3 space-y-3">
+          <p className="text-xs text-gray-400">整理券番号を押すと調理中に復帰します。</p>
+          {(fetchError || operationError) && <p role="alert" className="text-sm text-red-300">{fetchError || operationError}</p>}
+          {pendingOrders.length === 0 ? <p className="py-6 text-center text-gray-400">保留中の注文はありません。</p> : <div className="grid grid-cols-3 gap-2">
+            {pendingOrders.slice(currentPendingPage * 9, currentPendingPage * 9 + 9).map(order => <button key={order._id} type="button" disabled={busy.includes(order._id)} aria-label={`整理券${order.ticketNumber}番を調理中に復帰`} aria-busy={busy.includes(order._id)} onClick={() => void updateStatus(order._id, order.ticketNumber, 'active')} className="min-h-16 min-w-0 rounded-xl border-2 border-orange-300 bg-orange-100 px-2 py-3 text-4xl font-black tabular-nums tracking-tight text-orange-950 transition hover:bg-orange-200 active:scale-95 disabled:opacity-40 disabled:cursor-wait focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-orange-400 break-all">{order.ticketNumber}</button>)}
+          </div>}
+          <Pager page={currentPendingPage} count={pendingPages} onChange={setPendingPage} label="保留注文" />
+        </div>
+      </section>}
     </div>
   );
 }
