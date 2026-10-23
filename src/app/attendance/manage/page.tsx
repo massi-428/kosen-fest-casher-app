@@ -1,8 +1,8 @@
 "use client";
 
 import Link from 'next/link';
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { requestJson, postJson } from '@/lib/client-api';
+import { useCallback, useRef, useState } from 'react';
+import { requestJson, ApiError } from '@/lib/client-api';
 import { attendanceTime, durationLabel } from '@/lib/attendance';
 
 type Employee = { _id: string; personalId: number; name: string; archivedAt?: string | null };
@@ -12,8 +12,8 @@ type Data = { employees: Employee[]; records: Record[]; shifts: Shift[]; totals:
 const field = 'w-full border border-gray-300 rounded-xl px-3 py-2 bg-white text-gray-900';
 const button = 'rounded-xl bg-gray-900 text-white px-3 py-2 font-bold disabled:opacity-40';
 
-export default function AttendanceManagePage() {
-  const [data, setData] = useState<Data>({ employees: [], records: [], shifts: [], totals: [], notificationDay: 0 });
+function AttendanceManager({ password, initialData, onLock }: { password: string; initialData: Data; onLock: () => void }) {
+  const [data, setData] = useState<Data>(initialData);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [nextId, setNextId] = useState('');
   const [name, setName] = useState('');
@@ -28,13 +28,13 @@ export default function AttendanceManagePage() {
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
   const lock = useRef(false);
-  const refresh = useCallback(async () => setData(await requestJson('/api/attendance')), []);
-  useEffect(() => { refresh().catch(e => setError(e.message)); }, [refresh]);
+  const refresh = useCallback(async () => setData(await requestJson('/api/attendance', { headers: { 'X-Attendance-Password': encodeURIComponent(password) } })), [password]);
+  const postJson = (url: string, body: unknown) => requestJson(url, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Attendance-Password': encodeURIComponent(password) }, body: JSON.stringify(body) });
 
   const run = async (action: () => Promise<void>) => {
     if (lock.current) return;
     lock.current = true; setBusy(true); setError(''); setMessage('');
-    try { await action(); } catch (e) { setError(e instanceof Error ? e.message : '通信エラー'); }
+    try { await action(); } catch (e) { if (e instanceof ApiError && (e.status === 401 || e.status === 403)) onLock(); else setError(e instanceof Error ? e.message : '通信エラー'); }
     finally { lock.current = false; setBusy(false); }
   };
   const staffName = (personalId: number) => data.employees.find(e => e.personalId === personalId)?.name || '';
@@ -42,7 +42,7 @@ export default function AttendanceManagePage() {
 
   return <main className="min-h-screen bg-gray-50 text-gray-900 p-3 lg:p-4">
     <div className="max-w-5xl mx-auto space-y-3">
-      <header className="flex flex-wrap items-center justify-between gap-4"><div><h1 className="text-xl font-black">スタッフ・シフト管理</h1><p className="text-sm text-gray-500 mt-1">スタッフ・個人ID・シフト・打刻履歴（日本時間）</p></div><Link href="/attendance" className={button}>勤怠管理へ戻る</Link></header>
+      <header className="flex flex-wrap items-center justify-between gap-4"><div><h1 className="text-xl font-black">スタッフ・シフト管理</h1><p className="text-sm text-gray-500 mt-1">スタッフ・個人ID・シフト・打刻履歴（日本時間）</p></div><div className="flex gap-2"><button type="button" onClick={onLock} className={button}>ロック</button><Link href="/attendance" className={button}>勤怠管理へ戻る</Link></div></header>
       {error && <div role="alert" className="bg-red-50 text-red-700 rounded-xl p-2">{error} <button disabled={busy} onClick={() => run(async () => { await refresh(); })} className="underline">再取得</button></div>}
       {message && <p role="status" className="bg-green-50 text-green-800 rounded-xl p-2">{message}</p>}
       <div className="grid md:grid-cols-2 gap-3">
@@ -92,4 +92,33 @@ export default function AttendanceManagePage() {
       <section className="bg-white border rounded-xl p-3 space-y-2"><h2 className="text-lg font-bold">打刻履歴（最新100件）</h2><div className="overflow-x-auto"><table className="w-full text-left whitespace-nowrap"><thead><tr><th className="p-3">スタッフ</th><th className="p-3">出勤</th><th className="p-3">退勤</th></tr></thead><tbody>{data.records.map(r => <tr key={r._id} className="border-t"><td className="p-3">{r.personalId} · {staffName(r.personalId)}</td><td className="p-3">{attendanceTime(r.clockIn)}</td><td className="p-3">{r.clockOut ? attendanceTime(r.clockOut) : '出勤中'}</td></tr>)}</tbody></table></div>{!data.records.length && <p>打刻履歴はありません。</p>}</section>
     </div>
   </main>;
+}
+
+export default function AttendanceManagePage() {
+  const [access, setAccess] = useState<{ password: string; data: Data } | null>(null);
+  const [password, setPassword] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const attempt = useRef(0);
+  const unlock = async () => {
+    if (busy) return;
+    const version = ++attempt.current;
+    setBusy(true); setError('');
+    try {
+      const data = await requestJson('/api/attendance', { headers: { 'X-Attendance-Password': encodeURIComponent(password) } });
+      if (version === attempt.current) { setAccess({ password, data }); setPassword(''); }
+    } catch (e) { if (version === attempt.current) setError(e instanceof ApiError && e.status === 403 ? 'パスワードが正しくありません' : e instanceof Error ? e.message : '認証できませんでした'); }
+    finally { if (version === attempt.current) setBusy(false); }
+  };
+  if (access) return <AttendanceManager password={access.password} initialData={access.data} onLock={() => { attempt.current++; setAccess(null); setPassword(''); setError(''); setBusy(false); }} />;
+  return <main className="min-h-screen bg-gray-50 p-4 text-gray-900 flex items-center justify-center"><section className="w-full max-w-sm rounded-2xl border bg-white p-6 space-y-4">
+    <h1 className="text-xl font-black">スタッフ・シフト管理</h1>
+    <p className="text-sm text-gray-600">現在ログインしている店舗アカウントのパスワードを入力してください。</p>
+    <form onSubmit={e => { e.preventDefault(); void unlock(); }} className="space-y-3">
+      <label className="block text-sm font-bold">パスワード<input type="password" autoComplete="current-password" autoFocus required maxLength={256} disabled={busy} className={`${field} mt-1`} value={password} onChange={e => setPassword(e.target.value)} /></label>
+      {error && <p role="alert" className="text-sm text-red-700">{error}</p>}
+      <button disabled={busy} className={`${button} w-full`}>{busy ? '確認中…' : 'ロックを解除'}</button>
+    </form>
+    <Link href="/attendance" className="block text-center text-sm underline">勤怠管理へ戻る</Link>
+  </section></main>;
 }

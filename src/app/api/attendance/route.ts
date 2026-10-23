@@ -5,6 +5,7 @@ import { unauthorizedResponse } from '@/lib/auth';
 import { Employee, EmployeeCounter, AttendanceRecord, Shift, FestivalSchedule } from '@/models/Attendance';
 import { personalIdFrom, festivalShift, attendanceToday } from '@/lib/attendance';
 import { isValidObjectId } from '@/lib/validation';
+import { canManageAttendance } from '@/lib/attendance-access';
 
 export const dynamic = 'force-dynamic';
 const reply = (message: string, status = 400) => NextResponse.json({ message }, { status });
@@ -45,6 +46,7 @@ export async function GET(request: Request) {
       ]);
       return NextResponse.json(shifts.filter(s => !active.some(a => a.personalId === s.personalId)).map(s => ({ ...s, name: employees.find(e => e.personalId === s.personalId)?.name || '' })));
     }
+    if (!await canManageAttendance(request, context.userId)) return reply('店舗アカウントのパスワードを入力してください', 403);
     const [employees, records, shifts, totals, festival] = await Promise.all([
       Employee.find({ storeId }).sort({ personalId: 1 }),
       AttendanceRecord.find({ storeId }).sort({ clockIn: -1 }).limit(100),
@@ -67,6 +69,7 @@ export async function POST(request: Request) {
     const { storeId } = context;
     const body = await request.json();
     if (!body || typeof body !== 'object' || Array.isArray(body)) return reply('入力が不正です');
+    if (body.action !== 'clockIn' && body.action !== 'clockOut' && !await canManageAttendance(request, context.userId)) return reply('店舗アカウントのパスワードを入力してください', 403);
     if (body.action === 'notificationDay') {
       if (![0, 1, 2].includes(body.day)) return reply('通知対象を正しく選択してください');
       await FestivalSchedule.findOneAndUpdate({ _id: storeId }, { $set: { notificationDay: body.day, notificationDate: attendanceToday() } }, { upsert: true });

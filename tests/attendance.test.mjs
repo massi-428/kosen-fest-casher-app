@@ -36,7 +36,7 @@ test('duration totals display hours beyond a day without rounding up', () => {
   assert.equal(durationLabel(0), '0時間0分');
 });
 
-function fixture(authenticated = true) {
+function fixture(authenticated = true, managementAccess = true) {
   const employees = [];
   const records = [];
   const shifts = [];
@@ -69,6 +69,7 @@ function fixture(authenticated = true) {
     deleteMany: async filter => { scoped(filter); assert.ok(filter.$or); for (let i = shifts.length - 1; i >= 0; i--) if (shifts[i].personalId === filter.personalId) shifts.splice(i, 1); },
   };
   const api = createLoader({
+    '@/lib/attendance-access': { canManageAttendance: async () => managementAccess },
     '@/lib/db': async () => {},
     '@/lib/store': { getActiveStoreContext: async () => authenticated ? { storeId: 'store-a' } : null },
     '@/lib/auth': { unauthorizedResponse: () => Response.json({}, { status: 401 }) },
@@ -91,6 +92,18 @@ test('registration assigns sequential IDs; punches reject duplicates and stale c
   assert.equal((await post({ action: 'clockOut', personalId: 1, recordId: '1' })).status, 200);
   assert.ok(records[0].clockOut instanceof Date);
   assert.equal((await post({ action: 'clockOut', personalId: 1, recordId: '1' })).status, 409);
+});
+
+test('management reads and writes require password verification while punching stays available', async () => {
+  const { api, post } = fixture(true, false);
+  assert.equal((await api.GET(new Request('http://localhost/api/attendance'))).status, 403);
+  for (const action of ['employee', 'employees', 'notificationDay', 'shift', 'updateShift', 'deleteShift', 'changeId', 'deleteEmployee']) {
+    assert.equal((await post({ action, personalId: 1, name: 'Staff' })).status, 403, action);
+  }
+  assert.equal((await api.GET(new Request('http://localhost/api/attendance?mode=active'))).status, 200);
+  assert.equal((await api.GET(new Request('http://localhost/api/attendance?personalId=1'))).status, 404);
+  assert.equal((await post({ action: 'clockIn', personalId: 1 })).status, 404);
+  assert.equal((await post({ action: 'clockOut', personalId: 1 })).status, 404);
 });
 
 test('bulk registration preserves name order and continues existing IDs without consuming IDs for invalid input', async () => {
