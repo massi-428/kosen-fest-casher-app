@@ -1,12 +1,6 @@
 import mongoose from 'mongoose';
 import { attachDatabasePool } from '@vercel/functions';
 
-const MONGODB_URI = process.env.MONGODB_URI;
-
-if (!MONGODB_URI) {
-  throw new Error('環境変数 MONGODB_URI が定義されていません。');
-}
-
 type MongooseCache = {
   conn: typeof mongoose | null;
   promise: Promise<typeof mongoose> | null;
@@ -25,6 +19,12 @@ if (!cached) {
 const mongooseCache = cached;
 
 async function connectToDatabase() {
+  // Validate on use so builds and route imports do not require database secrets.
+  const mongodbUri = process.env.MONGODB_URI;
+  if (!mongodbUri?.trim()) {
+    throw new Error('環境変数 MONGODB_URI が定義されていません。');
+  }
+
   // Initial connection and reconnect attempts must be shared, even while disconnected.
   if (mongooseCache.promise) return mongooseCache.promise;
 
@@ -56,7 +56,7 @@ async function connectToDatabase() {
         await mongoose.connection.close();
       }
 
-      const connection = await mongoose.connect(MONGODB_URI!, opts);
+      const connection = await mongoose.connect(mongodbUri, opts);
       // Register once per client, not once per request. Local development needs no hook.
       if (process.env.VERCEL === '1') {
         const client = connection.connection.getClient();

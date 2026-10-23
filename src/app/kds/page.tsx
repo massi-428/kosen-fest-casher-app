@@ -165,9 +165,16 @@ export default function KitchenDisplaySystem() {
       <div className="flex-1 flex flex-col min-w-0">
         <div className="flex justify-between items-center mb-2 px-2">
           <h1 className="text-xl font-bold tracking-wider flex items-center gap-3"><span className="bg-blue-600 px-3 py-0.5 rounded text-white shadow-lg border border-blue-400 text-sm">KDS</span><span className="text-gray-300">COOKING</span><span className="bg-gray-700 px-2 py-0.5 rounded-full text-lg font-mono">{activeOrders.length}</span></h1>
-          <button onClick={fetchOrders} className="bg-gray-700 hover:bg-gray-600 px-3 py-0.5 rounded border border-gray-500 ml-1 transition active:scale-95 text-[10px]">REFRESH</button>
         </div>
-        <div role="status" className="mb-2 rounded bg-gray-900 p-2 text-sm">{loading ? '読み込み中…' : '最終更新: ' + (lastUpdated || '未取得')}<p className="text-red-300">{fetchError || operationError}</p><button onClick={fetchOrders}>再取得・再試行</button></div>
+        <div className="mb-2 flex items-center justify-between gap-3 rounded bg-gray-900 p-2 text-sm">
+          <div role="status" className="min-w-0">
+            <p>{loading ? '読み込み中…' : '最終更新: ' + (lastUpdated || '未取得')}</p>
+            {(fetchError || operationError) && <p className="text-red-300">{fetchError || operationError}</p>}
+          </div>
+          <button type="button" onClick={fetchOrders} aria-label="注文を再読み込み" title="再読み込み" className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-gray-600 bg-gray-700 text-gray-100 transition hover:bg-gray-600 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400">
+            <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5"><path d="M20 7v5h-5" /><path d="M4 17v-5h5" /><path d="M6.1 7a7 7 0 0 1 11.55-1.65L20 8M4 16l2.35 2.65A7 7 0 0 0 17.9 17" /></svg>
+          </button>
+        </div>
         <div className="flex-1 overflow-y-auto pr-1 pb-1">
           {activeOrders.length === 0 ? <div className="flex flex-col justify-center items-center h-full text-gray-600"><p className="text-3xl font-black opacity-20 tracking-widest">{loading ? '読み込み中…' : fetchError ? '取得できません' : '調理中の注文はありません'}</p></div> :
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 gap-3 pb-20">{activeOrders.map((order) => <div key={order._id} className="min-h-[350px] h-auto"><OrderTicket busy={busy.includes(order._id)} order={order} onComplete={(id: string, num: string) => updateStatus(id, num, 'completed')} onPending={(id: string, num: string) => updateStatus(id, num, 'pending')} /></div>)}</div>

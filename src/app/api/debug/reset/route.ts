@@ -5,6 +5,11 @@ import { unauthorizedResponse } from '@/lib/auth';
 import { getActiveStoreContext } from '@/lib/store';
 
 export async function DELETE(request: Request) {
+  // Deny before any database or authorization work, including Vercel previews.
+  if (process.env.NODE_ENV !== 'development' || process.env.VERCEL || process.env.VERCEL_ENV) {
+    return NextResponse.json({ message: 'Not Found' }, { status: 404 });
+  }
+
   try {
     await connectToDatabase();
     const context = await getActiveStoreContext(request);

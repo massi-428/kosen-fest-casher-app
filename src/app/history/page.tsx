@@ -224,11 +224,22 @@ export default function HistoryPage() {
             <option value="completed">完了済み</option>
             <option value="cancelled">キャンセル済み</option>
           </select>
-          <button onClick={fetchOrders} className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition flex items-center gap-2 shadow-sm"><span className="text-xl">↻</span></button>
         </div>
       </div>
       
-      <div className="mb-4 rounded-xl bg-white p-3" role="status"><p>最終成功: {lastUpdated || '未取得'} {loading && '／読み込み中…'}</p>{loadedQuery && <p>表示データ: {loadedQuery}</p>}{(fetchError || (loadedQuery && loadedQuery !== queryKey)) && <p className="font-bold text-red-600">{fetchError} {loadedQuery ? '最後に取得したデータです。最新の検索結果ではありません。' : '注文は未取得です。'}</p>}{pendingError && <p className="text-red-600">{pendingError}</p>}{operationError && <p className="text-red-600">{operationError}</p>}<button onClick={() => { void fetchOrders(); void fetchPending(); }} className="text-blue-700">再取得・再試行</button>{!loading && !fetchError && loadedQuery === queryKey && orders.length === 0 && <p>検索結果はありません。</p>}</div>
+      <div className="mb-4 flex items-start justify-between gap-3 rounded-xl bg-white p-3">
+        <div role="status" className="min-w-0">
+          <p>最終成功: {lastUpdated || '未取得'} {loading && '／読み込み中…'}</p>
+          {loadedQuery && <p>表示データ: {loadedQuery}</p>}
+          {(fetchError || (loadedQuery && loadedQuery !== queryKey)) && <p className="font-bold text-red-600">{fetchError} {loadedQuery ? '最後に取得したデータです。最新の検索結果ではありません。' : '注文は未取得です。'}</p>}
+          {pendingError && <p className="text-red-600">{pendingError}</p>}
+          {operationError && <p className="text-red-600">{operationError}</p>}
+          {!loading && !fetchError && loadedQuery === queryKey && orders.length === 0 && <p>検索結果はありません。</p>}
+        </div>
+        <button type="button" onClick={() => { void fetchOrders(); void fetchPending(); }} aria-label="履歴と未完了の精算を再読み込み" title="再読み込み" className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-blue-600 text-white shadow-sm transition hover:bg-blue-700 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2">
+          <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5"><path d="M20 7v5h-5" /><path d="M4 17v-5h5" /><path d="M6.1 7a7 7 0 0 1 11.55-1.65L20 8M4 16l2.35 2.65A7 7 0 0 0 17.9 17" /></svg>
+        </button>
+      </div>
       {pendingSettlements.length > 0 && <div className="mb-4 rounded-xl bg-yellow-50 p-4"><h2 className="font-bold">未完了の精算（日付検索の対象外も表示）</h2>{pendingSettlements.map(order => <button key={order._id} className="m-2 rounded border p-2" onClick={() => { const operation = order.settlementOperations?.find(op => op.operationId === order.settlementLock); if (operation) showOperation(order, operation); }}>{formatTime(order.createdAt)} ／ {order.ticketNumber}番：精算を確認・再開</button>)}</div>}
       <div className="mb-4 flex gap-3"><button disabled={page === 0} onClick={() => setPage(p => p - 1)}>前の100件</button><span>{page + 1}ページ ／ {total}件</span><button disabled={(page + 1) * 100 >= total} onClick={() => setPage(p => p + 1)}>次の100件</button></div>
       <div className="bg-white p-6 rounded-xl shadow-md mb-6">
