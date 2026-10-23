@@ -12,6 +12,7 @@ import {
 import { requestJson, postJson } from '@/lib/client-api';
 import { readDraft, writeDraft, removeDraft, cartChanges, type CartDraft, type OrderQuote } from '@/lib/cart-draft';
 import { Toast } from '@/components/common/Toast';
+import { ShiftReminder } from '@/components/common/ShiftReminder';
 
 const navigateTo = (path: string) => {
   if (typeof window !== 'undefined') window.location.href = path;
@@ -366,6 +367,7 @@ export default function OrderPage() {
       <SharedResultModal isOpen={modals.result} title={modalData.title || ''} message={modalData.message || ''} type={modalData.type || 'success'} onClose={() => toggleModal('result', false)} />
       <SharedConfirmModal isOpen={modals.confirm} message={modalData.message || ''} onConfirm={modalData.onConfirm || (() => {})} onCancel={closeConfirmModal} confirmLabel={modalData.confirmLabel} cancelLabel={modalData.cancelLabel} />
       <Toast show={toast.show} message={toast.message} title={toast.title} type={toast.type} onClose={() => setToast((prev) => ({ ...prev, show: false }))} />
+      {identity && <ShiftReminder key={identity.storeId} storeId={identity.storeId} paused={toast.show} />}
       <SharedDetailModal isOpen={modals.detail} productName={modalData.productName || ''} currentDetail={modalData.currentDetail} currentOptions={modalData.currentOptions} optionsList={customizationOptions} onSave={(detail: string, options: CustomOption[]) => {
         setCartItems((prev) => {
           const targetIndex = modalData.index ?? -1;

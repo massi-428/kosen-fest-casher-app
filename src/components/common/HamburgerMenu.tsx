@@ -9,6 +9,7 @@ type HamburgerMenuProps = {
 };
 
 const menuItems = [
+  { path: '/attendance', label: '勤怠管理', icon: '/image/icons/ROOTINE_icon_order_history.png' },
   { path: '/settings', label: 'システム設定', icon: '/image/icons/ROOTINE_icon_option.png' },
   { path: '/report', label: '営業日報', icon: '/image/icons/ROOTINE_icon_calculate_sales.png' },
   { path: '/history', label: '注文履歴', icon: '/image/icons/ROOTINE_icon_order_history.png' },
