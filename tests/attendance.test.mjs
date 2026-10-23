@@ -2,7 +2,16 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createLoader } from './support/load-ts.mjs';
 
-const { personalIdFrom, shiftDates, durationLabel } = createLoader()('src/lib/attendance.ts');
+const { personalIdFrom, shiftDates, durationLabel, isShiftDue } = createLoader()('src/lib/attendance.ts');
+test('shift notifications begin at the scheduled time, never 15 minutes early', () => {
+  const start = '2026-10-23T10:00:00+09:00';
+  const time = new Date(start).getTime();
+  assert.equal(isShiftDue(start, time - 15 * 60000), false);
+  assert.equal(isShiftDue(start, time - 1), false);
+  assert.equal(isShiftDue(start, time), true);
+  assert.equal(isShiftDue(start, time + 59999), true);
+  assert.equal(isShiftDue(start, time + 60000), false);
+});
 test('personal IDs accept only positive safe integers', () => {
   for (const value of ['', 0, -1, '1.5', '1e2', null, {}, Number.MAX_SAFE_INTEGER + 1]) assert.equal(personalIdFrom(value), null);
   assert.equal(personalIdFrom('001'), 1);
@@ -31,8 +40,8 @@ function fixture(authenticated = true) {
   const Employee = {
     db: { transaction: async fn => fn({}) },
     create: async values => { const created = values.map((v, i) => ({ ...v, _id: String(employees.length + i + 1).padStart(24, '0') })); employees.push(...created); return created; },
-    findOneAndUpdate: async filter => { scoped(filter); return employees.find(e => e.personalId === filter.personalId && (!filter._id || e._id === filter._id)); },
-    findOne: async filter => { scoped(filter); return employees.find(e => e.personalId === filter.personalId); },
+    findOneAndUpdate: async filter => { scoped(filter); return employees.find(e => e.personalId === filter.personalId && (!filter._id || e._id === filter._id) && (filter.archivedAt !== null || !e.archivedAt)); },
+    findOne: async filter => { scoped(filter); return employees.find(e => e.personalId === filter.personalId && (filter.archivedAt !== null || !e.archivedAt)); },
     exists: filter => { scoped(filter); return { session: async () => employees.some(e => e.personalId === filter.personalId) }; },
     updateOne: async (filter, update) => { scoped(filter); Object.assign(employees.find(e => e._id === filter._id), update.$set); },
     find: filter => { scoped(filter); return { lean: async () => employees }; },
@@ -51,6 +60,7 @@ function fixture(authenticated = true) {
     exists: filter => { scoped(filter); return { session: async () => shifts.some(s => s.personalId === filter.personalId && s.start < filter.start.$lt && s.end > filter.end.$gt) }; },
     create: async ([value]) => shifts.push(value),
     updateMany: async (filter, update) => { scoped(filter); shifts.filter(s => s.personalId === filter.personalId).forEach(s => Object.assign(s, update.$set)); },
+    deleteMany: async filter => { scoped(filter); for (let i = shifts.length - 1; i >= 0; i--) if (shifts[i].personalId === filter.personalId && shifts[i].end >= filter.end.$gte) shifts.splice(i, 1); },
   };
   const api = createLoader({
     '@/lib/db': async () => {},
@@ -127,7 +137,7 @@ test('unauthenticated reads and mutations are denied', async () => {
   assert.equal((await post({ action: 'employee', name: 'Staff' })).status, 401);
 });
 
-test('reminders query the next 15 minutes and suppress staff already clocked in', async () => {
+test('reminders preload upcoming shifts and include the current start minute, excluding clocked-in staff', async () => {
   const now = Date.now();
   const shifts = [{ _id: 's1', personalId: 1 }, { _id: 's2', personalId: 2 }];
   const api = createLoader({
@@ -137,8 +147,8 @@ test('reminders query the next 15 minutes and suppress staff already clocked in'
     '@/models/Attendance': {
       Shift: { find: filter => {
         assert.equal(filter.storeId, 'store-a');
-        assert.ok(filter.start.$gte.getTime() >= now);
-        assert.equal(filter.start.$lte - filter.start.$gte, 15 * 60000);
+        assert.ok(filter.start.$gte.getTime() >= now - 60000);
+        assert.equal(filter.start.$lte - filter.start.$gte, 16 * 60000);
         return { sort: () => ({ lean: async () => shifts }) };
       } },
       Employee: { find: filter => { assert.equal(filter.storeId, 'store-a'); return { lean: async () => [{ personalId: 1, name: 'A' }, { personalId: 2, name: 'B' }] }; } },
@@ -150,4 +160,24 @@ test('reminders query the next 15 minutes and suppress staff already clocked in'
   })('src/app/api/attendance/route.ts');
   const result = await api.GET(new Request('http://localhost/api/attendance?mode=reminders'));
   assert.deepEqual(await result.json(), [{ _id: 's1', personalId: 1, name: 'A' }]);
+});
+
+test('staff deletion rejects active attendance, preserves history and reserves the ID', async () => {
+  const { api, post, records, shifts } = fixture();
+  const employee = await (await post({ action: 'employee', name: 'Delete me' })).json();
+  const remove = () => post({ action: 'deleteEmployee', personalId: 1, employeeId: employee._id });
+  await post({ action: 'shift', personalId: 1, start: '2099-10-23T10:00', end: '2099-10-23T11:00' });
+  await post({ action: 'clockIn', personalId: 1 });
+  assert.equal((await remove()).status, 409);
+  assert.equal(shifts.length, 1);
+  await post({ action: 'clockOut', personalId: 1, recordId: '1' });
+  assert.equal((await remove()).status, 200);
+  assert.equal(shifts.length, 0);
+  assert.equal(records.length, 1);
+  assert.ok(records[0].clockOut);
+  assert.equal((await api.GET(new Request('http://localhost/api/attendance?personalId=1'))).status, 404);
+  assert.equal((await post({ action: 'clockIn', personalId: 1 })).status, 404);
+  const other = await (await post({ action: 'employee', name: 'Other' })).json();
+  assert.equal(other.personalId, 2);
+  assert.equal((await post({ action: 'changeId', personalId: 2, employeeId: other._id, newPersonalId: 1 })).status, 409);
 });

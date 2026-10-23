@@ -7,13 +7,15 @@ import { attendanceTime } from '@/lib/attendance';
 
 type Employee = { _id: string; personalId: number; name: string };
 type Record = { _id: string; personalId: number; clockIn: string; clockOut: string | null };
-const field = 'w-full border border-gray-300 rounded-xl px-4 py-3 bg-white text-gray-900';
-const button = 'rounded-xl bg-gray-900 text-white px-5 py-3 font-bold disabled:opacity-40';
+const field = 'w-full border border-gray-300 rounded-xl px-3 py-2 bg-white text-gray-900';
+const button = 'rounded-xl bg-gray-900 text-white px-3 py-2 font-bold disabled:opacity-40';
 
 export default function AttendancePage() {
   const [id, setId] = useState('');
   const [selected, setSelected] = useState<{ employee: Employee; active: Record | null } | null>(null);
   const [busy, setBusy] = useState(false);
+  const idInput = useRef<HTMLInputElement>(null);
+  useEffect(() => { if (!busy) idInput.current?.focus(); }, [busy]);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
   const [activeStaff, setActiveStaff] = useState<(Record & { name: string })[]>([]);
@@ -47,34 +49,38 @@ export default function AttendancePage() {
     const result = await requestJson(`/api/attendance?personalId=${encodeURIComponent(id)}`);
     if (version === lookupVersion.current) setSelected(result);
   };
+  const punch = async () => {
+    if (!selected) return;
+    const target = selected;
+    setSelected(null);
+    try {
+      const result = await postJson('/api/attendance', { action: target.active ? 'clockOut' : 'clockIn', personalId: target.employee.personalId, employeeId: target.employee._id, recordId: target.active?._id });
+      setMessage(`${target.employee.name}：${result.message}`);
+      setId('');
+    } finally { await refreshActive(); }
+  };
 
-  return <main className="min-h-screen bg-gray-50 text-gray-900 p-4 sm:p-8">
-    <div className="max-w-2xl mx-auto space-y-6">
-      <header className="flex flex-wrap items-center justify-between gap-4"><div><h1 className="text-2xl font-black">勤怠管理</h1><p className="text-sm text-gray-500 mt-1">個人IDを入力して出勤・退勤を記録します。</p></div><Link href="/order" className={button}>注文画面へ</Link></header>
-      {error && <div role="alert" className="bg-red-50 text-red-700 rounded-xl p-4">{error} <button disabled={busy} onClick={() => run(async () => { await lookup(); })} className="underline">再取得</button></div>}
-      {message && <p role="status" className="bg-green-50 text-green-800 rounded-xl p-4">{message}</p>}
-      <section className="bg-white border rounded-2xl p-6 space-y-4">
+  return <main className="min-h-screen bg-gray-50 text-gray-900 p-3 lg:p-4">
+    <div className="max-w-7xl mx-auto space-y-3">
+      <header className="flex flex-wrap items-center justify-between gap-4"><div><h1 className="text-xl font-black">勤怠管理</h1><p className="text-sm text-gray-500 mt-1">個人IDを入力して出勤・退勤を記録します。</p></div><Link href="/order" className={button}>注文画面へ</Link></header>
+      {error && <div role="alert" className="bg-red-50 text-red-700 rounded-xl p-2">{error} <button disabled={busy} onClick={() => run(async () => { await lookup(); })} className="underline">再取得</button></div>}
+      {message && <p role="status" className="bg-green-50 text-green-800 rounded-xl p-2">{message}</p>}
+      <div className="grid lg:grid-cols-[minmax(0,2fr)_minmax(280px,1fr)] gap-3 items-start">
+      <section className="lg:col-start-2 lg:row-start-1 bg-white border rounded-xl p-3 space-y-3">
         <h2 className="text-lg font-bold">出勤・退勤</h2>
-        <form onSubmit={e => { e.preventDefault(); void run(lookup); }} className="flex items-end gap-3">
-          <label className="flex-1">個人ID<input className={`${field} mt-2`} inputMode="numeric" pattern="[0-9]+" required value={id} disabled={busy} onChange={e => { setId(e.target.value); setSelected(null); lookupVersion.current++; }} placeholder="例：1" /></label>
-          <button className={button} disabled={busy}>確認</button>
+        <form onKeyDown={e => { if (e.key === 'Enter' && (e.repeat || e.nativeEvent.isComposing)) e.preventDefault(); }} onSubmit={e => { e.preventDefault(); void run(selected ? punch : lookup); }} className="space-y-3">
+          <label className="block text-sm font-bold">個人ID<input ref={idInput} className={`${field} mt-1`} inputMode="numeric" pattern="[0-9]+" required value={id} readOnly={busy} onChange={e => { setId(e.target.value); setSelected(null); lookupVersion.current++; }} placeholder="例：1" /></label>
+          {selected && <div className="rounded-lg bg-gray-50 p-2" aria-live="polite"><p className="font-bold">ID {selected.employee.personalId} · {selected.employee.name}</p><p className="text-sm text-gray-500">{selected.active ? `出勤中 · ${attendanceTime(selected.active.clockIn)}〜` : '未出勤'}</p></div>}
+          <button className={`${button} w-full ${selected ? selected.active ? 'bg-orange-700' : 'bg-green-700' : ''}`} disabled={busy}>{busy ? '処理中…' : selected ? `${selected.active ? '退勤' : '出勤'}（Enter）` : '確認（Enter）'}</button>
+          <p className="text-xs text-gray-500">ID入力 → Enterで確認 → Enterで打刻</p>
         </form>
-        {selected && <div className="rounded-xl bg-gray-50 p-4 flex flex-wrap items-center justify-between gap-4"><div><p className="font-bold">ID {selected.employee.personalId} · {selected.employee.name}</p><p className="text-sm mt-1">{selected.active ? `出勤中 · ${attendanceTime(selected.active.clockIn)}〜` : '未出勤'}</p></div>
-          <button disabled={busy} className={`${button} ${selected.active ? 'bg-orange-700' : 'bg-green-700'}`} onClick={() => run(async () => {
-            const target = selected; setSelected(null);
-            const result = await postJson('/api/attendance', { action: target.active ? 'clockOut' : 'clockIn', personalId: target.employee.personalId, employeeId: target.employee._id, recordId: target.active?._id });
-            setMessage(`${target.employee.name}：${result.message}`);
-            await refreshActive();
-            await lookup();
-          })}>{selected.active ? '退勤' : '出勤'}</button>
-        </div>}
       </section>
-      <section className="bg-white border rounded-2xl p-6 space-y-4">
+      <section className="lg:col-start-1 lg:row-start-1 bg-white border rounded-xl p-3 space-y-2">
         <div className="flex justify-between items-center gap-3"><h2 className="text-lg font-bold">出勤中のスタッフ{activeReady ? `（${activeStaff.length}人）` : ''}</h2><button className="underline text-sm" disabled={busy} onClick={() => void refreshActive()}>更新</button></div>
         {activeError && <p role="alert" className="text-red-700">{activeError} 一覧を更新してください。</p>}
         {!activeReady && !activeError && <p>読み込み中…</p>}
         {activeReady && !activeError && !activeStaff.length && <p className="text-gray-500">出勤中のスタッフはいません。</p>}
-        <ul className="divide-y">{activeStaff.map(staff => <li key={staff._id} className="py-4 flex flex-wrap items-center justify-between gap-3"><div><p className="font-bold">ID {staff.personalId} · {staff.name}</p><p className="text-sm text-gray-500">{attendanceTime(staff.clockIn)}〜</p></div><button className={`${button} bg-orange-700`} disabled={busy || !!activeError} aria-label={`${staff.name}を退勤にする`} onClick={() => void run(async () => {
+        <ul className="grid sm:grid-cols-2 xl:grid-cols-3 gap-2">{activeStaff.map(staff => <li key={staff._id} className="min-w-0 rounded-lg border border-gray-200 bg-gray-50 px-2 py-2 flex items-center justify-between gap-2"><div className="min-w-0"><p className="text-sm font-bold truncate" title={`ID ${staff.personalId} · ${staff.name}`}>{staff.personalId} · {staff.name}</p><p className="text-xs text-gray-500">{attendanceTime(staff.clockIn)}〜</p></div><button className="shrink-0 rounded-lg bg-orange-700 text-white text-xs font-bold px-2 min-h-9 disabled:opacity-40" disabled={busy || !!activeError} aria-label={`${staff.name}を退勤にする`} onClick={() => void run(async () => {
           setSelected(null);
           try {
             const result = await postJson('/api/attendance', { action: 'clockOut', personalId: staff.personalId, recordId: staff._id });
@@ -82,7 +88,8 @@ export default function AttendancePage() {
           } finally { await refreshActive(); }
         })}>退勤</button></li>)}</ul>
       </section>
-      <nav aria-label="勤怠管理メニュー" className="border-t pt-6"><Link href="/attendance/manage" className="inline-flex rounded-xl border border-gray-300 bg-white px-5 py-3 font-bold hover:bg-gray-100">スタッフ・シフト管理 →</Link><p className="text-sm text-gray-500 mt-2">管理担当者向け：スタッフ一括登録・個人IDの確認・シフト設定・打刻履歴</p></nav>
+      </div>
+      <nav aria-label="勤怠管理メニュー" className="border-t pt-2"><Link href="/attendance/manage" className="inline-flex rounded-xl border border-gray-300 bg-white px-3 py-2 font-bold hover:bg-gray-100">スタッフ・シフト管理 →</Link><p className="text-sm text-gray-500 mt-2">管理担当者向け：スタッフ一括登録・個人IDの確認・シフト設定・打刻履歴</p></nav>
     </div>
   </main>;
 }

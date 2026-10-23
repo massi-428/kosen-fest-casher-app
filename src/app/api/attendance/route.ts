@@ -26,14 +26,14 @@ export async function GET(request: Request) {
     if (params.has('personalId')) {
       const personalId = personalIdFrom(params.get('personalId'));
       if (!personalId) return reply('個人IDを正しく入力してください');
-      const employee = await Employee.findOne({ storeId, personalId });
+      const employee = await Employee.findOne({ storeId, personalId, archivedAt: null });
       if (!employee) return reply('このIDのスタッフは登録されていません', 404);
       const active = await AttendanceRecord.findOne({ storeId, personalId, clockOut: null });
       return NextResponse.json({ employee, active });
     }
     if (params.get('mode') === 'reminders') {
       const now = new Date();
-      const shifts = await Shift.find({ storeId, start: { $gte: now, $lte: new Date(now.getTime() + 15 * 60000) } }).sort({ start: 1 }).lean();
+      const shifts = await Shift.find({ storeId, start: { $gte: new Date(now.getTime() - 60000), $lte: new Date(now.getTime() + 15 * 60000) } }).sort({ start: 1 }).lean();
       const ids = shifts.map(s => s.personalId);
       const [employees, active] = await Promise.all([
         Employee.find({ storeId, personalId: { $in: ids } }).lean(),
@@ -75,7 +75,8 @@ export async function POST(request: Request) {
     }
     const personalId = personalIdFrom(body.personalId);
     if (!personalId) return reply('個人IDを正しく入力してください');
-    if (!['clockIn', 'clockOut', 'shift', 'deleteShift', 'changeId'].includes(body.action)) return reply('操作が不正です');
+    if (!['clockIn', 'clockOut', 'shift', 'deleteShift', 'changeId', 'deleteEmployee'].includes(body.action)) return reply('操作が不正です');
+    if (body.action === 'deleteEmployee' && !isValidObjectId(body.employeeId)) return reply('スタッフIDが不正です');
     const newPersonalId = personalIdFrom(body.newPersonalId);
     if (body.action === 'changeId' && (!newPersonalId || newPersonalId >= Number.MAX_SAFE_INTEGER || !isValidObjectId(body.employeeId))) return reply('新しい個人IDを正しく入力してください');
     const dates = body.action === 'shift' ? shiftDates(body.start, body.end) : null;
@@ -83,8 +84,15 @@ export async function POST(request: Request) {
     if (body.action === 'deleteShift' && !isValidObjectId(body.shiftId)) return reply('シフトIDが不正です');
     const result = await Employee.db.transaction(async session => {
       // Serialize changes for each employee, including simultaneous punches and overlapping shifts.
-      const employee = await Employee.findOneAndUpdate({ storeId, personalId, ...(body.employeeId ? { _id: body.employeeId } : {}) }, { $inc: { revision: 1 } }, { session });
+      const employee = await Employee.findOneAndUpdate({ storeId, personalId, archivedAt: null, ...(body.employeeId ? { _id: body.employeeId } : {}) }, { $inc: { revision: 1 } }, { session });
       if (!employee) return { message: 'スタッフが見つかりません', status: 404 };
+      if (body.action === 'deleteEmployee') {
+        const active = await AttendanceRecord.findOne({ storeId, personalId, clockOut: null }).session(session);
+        if (active) return { message: '出勤中のスタッフは退勤してから削除してください', status: 409 };
+        await Employee.updateOne({ _id: employee._id, storeId }, { $set: { archivedAt: new Date() } }, { session });
+        await Shift.deleteMany({ storeId, personalId, end: { $gte: new Date() } }, { session });
+        return { message: 'スタッフを削除しました。打刻履歴と勤務時間は保存されています', status: 200 };
+      }
       if (body.action === 'changeId' && newPersonalId) {
         if (newPersonalId === personalId) return { message: '同じ個人IDです', status: 200 };
         const existing = await Employee.exists({ storeId, personalId: newPersonalId }).session(session);

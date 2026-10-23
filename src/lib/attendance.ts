@@ -21,3 +21,8 @@ export const durationLabel = (milliseconds: number) => {
   const minutes = Math.floor(Math.max(0, milliseconds) / 60000);
   return `${Math.floor(minutes / 60)}時間${minutes % 60}分`;
 };
+
+export const isShiftDue = (start: string, now: number) => {
+  const time = new Date(start).getTime();
+  return time <= now && time > now - 60000;
+};

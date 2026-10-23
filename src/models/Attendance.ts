@@ -4,6 +4,7 @@ const employeeSchema = new Schema({
   storeId: { type: String, required: true },
   personalId: { type: Number, required: true },
   name: { type: String, required: true },
+  archivedAt: { type: Date, default: null },
   revision: { type: Number, default: 0 },
 }, { timestamps: true });
 employeeSchema.index({ storeId: 1, personalId: 1 }, { unique: true });
