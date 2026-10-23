@@ -40,6 +40,10 @@ type StoreAdminData = {
 
 export default function AdminPage() {
   const [paymentMethods, setPaymentMethods] = useState<string[]>([]);
+  const [paymentStoreId, setPaymentStoreId] = useState('');
+  const [paymentReady, setPaymentReady] = useState(false);
+  const [savingPayments, setSavingPayments] = useState(false);
+  const [paymentMessage, setPaymentMessage] = useState('');
   const [cancelPassword, setCancelPassword] = useState('0000');
   const [maxStores, setMaxStores] = useState(10);
   const [newMethod, setNewMethod] = useState('');
@@ -120,6 +124,51 @@ export default function AdminPage() {
     setPaymentMethods(paymentMethods.filter((method) => method !== val));
   };
 
+  useEffect(() => {
+    let cancelled = false;
+    setPaymentReady(false);
+    setPaymentMethods([]);
+    setNewMethod('');
+    setPaymentMessage('');
+    if (!paymentStoreId) return;
+    const fetchPayments = async () => {
+      try {
+        const res = await apiFetch(`/api/admin/payment-methods?storeId=${encodeURIComponent(paymentStoreId)}`, { cache: 'no-store' });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.message || '決済方法の取得に失敗しました');
+        if (!cancelled) {
+          setPaymentMethods(data.paymentMethods);
+          setPaymentReady(true);
+        }
+      } catch {
+        if (!cancelled) setPaymentMessage('決済方法の取得に失敗しました。店舗を選択し直してください。');
+      }
+    };
+    fetchPayments();
+    return () => { cancelled = true; };
+  }, [paymentStoreId]);
+
+  const savePaymentMethods = async () => {
+    if (!paymentReady || savingPayments) return;
+    setSavingPayments(true);
+    setPaymentMessage('');
+    try {
+      const res = await apiFetch(`/api/admin/payment-methods?storeId=${encodeURIComponent(paymentStoreId)}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ paymentMethods }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || '決済方法の保存に失敗しました');
+      setPaymentMethods(data.paymentMethods);
+      setPaymentMessage('決済方法を保存しました');
+    } catch (error) {
+      setPaymentMessage(error instanceof Error ? error.message : '決済方法の保存に失敗しました');
+    } finally {
+      setSavingPayments(false);
+    }
+  };
+
   const handleSave = async () => {
     setLoading(true);
     setMessage('');
@@ -145,6 +194,7 @@ export default function AdminPage() {
   };
 
   const userRows = storeData?.users || [];
+  const paymentStores = [...userRows.flatMap((row) => row.stores), ...(storeData?.orphanStores || [])];
   const usersWithMultipleStores = userRows.filter((row) => row.stores.length > 1 || row.storeIds.length > 1).length;
 
   return (
@@ -181,6 +231,19 @@ export default function AdminPage() {
 
             <div>
               <label className="block text-gray-700 font-bold mb-2">決済方法の設定</label>
+              <select
+                aria-label="決済方法を設定する店舗"
+                value={paymentStoreId}
+                disabled={loadingStores || savingPayments}
+                onChange={(e) => { setPaymentReady(false); setPaymentStoreId(e.target.value); }}
+                className="w-full border-2 p-2 rounded-lg mb-3"
+              >
+                <option value="">{loadingStores ? '店舗を読み込み中...' : '店舗を選択してください'}</option>
+                {paymentStores.map((store) => <option key={store.id} value={store.id}>{store.name}（{store.ownerUserId}）</option>)}
+              </select>
+              <p className="text-xs text-gray-500 mb-3">選択した店舗の設定済み決済方法を表示します。追加・削除後は「決済方法を保存する」を押してください。</p>
+              {paymentStoreId && !paymentReady && !paymentMessage && <p role="status" className="text-sm mb-3">決済方法を読み込み中...</p>}
+              <fieldset disabled={!paymentReady || savingPayments}>
               <div className="flex gap-2 mb-3">
                 <input
                   type="text"
@@ -197,10 +260,16 @@ export default function AdminPage() {
                 {paymentMethods.map((method) => (
                   <div key={method} className="bg-gray-100 px-3 py-1 rounded-full flex items-center gap-2 border border-gray-300">
                     <span className="font-bold text-sm">{method}</span>
-                    <button onClick={() => removePaymentMethod(method)} className="text-red-500 font-bold px-1 hover:text-red-700">x</button>
+                    <button aria-label={`${method}を削除`} onClick={() => removePaymentMethod(method)} className="text-red-500 font-bold px-1 hover:text-red-700">x</button>
                   </div>
                 ))}
               </div>
+              {paymentReady && paymentMethods.length === 0 && <p className="text-sm text-gray-500">決済方法が設定されていません。</p>}
+              <button onClick={savePaymentMethods} className="mt-3 w-full bg-[#f3b928] py-2 rounded-lg font-bold disabled:bg-gray-200">
+                {savingPayments ? '保存中...' : '決済方法を保存する'}
+              </button>
+              </fieldset>
+              {paymentMessage && <p role="status" className="mt-2 text-sm">{paymentMessage}</p>}
             </div>
 
             <button

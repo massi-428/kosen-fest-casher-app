@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createLoader } from './support/load-ts.mjs';
 
-const { personalIdFrom, shiftDates } = createLoader()('src/lib/attendance.ts');
+const { personalIdFrom, shiftDates, durationLabel } = createLoader()('src/lib/attendance.ts');
 test('personal IDs accept only positive safe integers', () => {
   for (const value of ['', 0, -1, '1.5', '1e2', null, {}, Number.MAX_SAFE_INTEGER + 1]) assert.equal(personalIdFrom(value), null);
   assert.equal(personalIdFrom('001'), 1);
@@ -14,6 +14,12 @@ test('shifts use Japan time, allow overnight work, and reject invalid ranges and
   assert.equal(shiftDates('2026-02-30T10:00', '2026-03-01T12:00'), null);
   assert.equal(shiftDates('2026-10-23T10:00', '2026-10-23T10:00'), null);
   assert.equal(shiftDates('bad', 'bad'), null);
+  assert.equal(shiftDates('2026-10-23T10:15', '2026-10-23T11:00'), null);
+  assert.ok(shiftDates('2026-10-23T10:30', '2026-10-23T11:00'));
+});
+test('duration totals display hours beyond a day without rounding up', () => {
+  assert.equal(durationLabel(27 * 3600000 + 31 * 60000 + 59000), '27時間31分');
+  assert.equal(durationLabel(0), '0時間0分');
 });
 
 function fixture(authenticated = true) {
@@ -24,9 +30,12 @@ function fixture(authenticated = true) {
   const scoped = filter => assert.equal(filter.storeId, 'store-a');
   const Employee = {
     db: { transaction: async fn => fn({}) },
-    create: async values => { employees.push(...values); return values; },
-    findOneAndUpdate: async filter => { scoped(filter); return employees.find(e => e.personalId === filter.personalId); },
+    create: async values => { const created = values.map((v, i) => ({ ...v, _id: String(employees.length + i + 1).padStart(24, '0') })); employees.push(...created); return created; },
+    findOneAndUpdate: async filter => { scoped(filter); return employees.find(e => e.personalId === filter.personalId && (!filter._id || e._id === filter._id)); },
     findOne: async filter => { scoped(filter); return employees.find(e => e.personalId === filter.personalId); },
+    exists: filter => { scoped(filter); return { session: async () => employees.some(e => e.personalId === filter.personalId) }; },
+    updateOne: async (filter, update) => { scoped(filter); Object.assign(employees.find(e => e._id === filter._id), update.$set); },
+    find: filter => { scoped(filter); return { lean: async () => employees }; },
   };
   const AttendanceRecord = {
     findOne: filter => {
@@ -35,16 +44,19 @@ function fixture(authenticated = true) {
       return { session: async () => record, then: resolve => resolve(record) };
     },
     create: async ([value]) => { records.push({ ...value, _id: String(records.length + 1), save: async () => {} }); },
+    updateMany: async (filter, update) => { scoped(filter); records.filter(r => r.personalId === filter.personalId).forEach(r => Object.assign(r, update.$set)); },
+    find: filter => { scoped(filter); return { sort: () => ({ lean: async () => records.filter(r => r.clockOut === null) }) }; },
   };
   const Shift = {
     exists: filter => { scoped(filter); return { session: async () => shifts.some(s => s.personalId === filter.personalId && s.start < filter.start.$lt && s.end > filter.end.$gt) }; },
     create: async ([value]) => shifts.push(value),
+    updateMany: async (filter, update) => { scoped(filter); shifts.filter(s => s.personalId === filter.personalId).forEach(s => Object.assign(s, update.$set)); },
   };
   const api = createLoader({
     '@/lib/db': async () => {},
     '@/lib/store': { getActiveStoreContext: async () => authenticated ? { storeId: 'store-a' } : null },
     '@/lib/auth': { unauthorizedResponse: () => Response.json({}, { status: 401 }) },
-    '@/models/Attendance': { Employee, AttendanceRecord, Shift, EmployeeCounter: { findOneAndUpdate: async (filter, update) => { assert.equal(filter._id, 'store-a'); counter += update.$inc.value; return { value: counter }; } } },
+    '@/models/Attendance': { Employee, AttendanceRecord, Shift, EmployeeCounter: { findOneAndUpdate: async (filter, update) => { assert.equal(filter._id, 'store-a'); counter = update.$inc ? counter + update.$inc.value : Math.max(counter, update.$max.value); return { value: counter }; } } },
   })('src/app/api/attendance/route.ts');
   const post = body => api.POST(new Request('http://localhost/api/attendance', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }));
   return { api, post, records, shifts };
@@ -75,6 +87,30 @@ test('bulk registration preserves name order and continues existing IDs without 
   assert.equal(response.status, 201);
   assert.deepEqual((await response.json()).employees.map(e => [e.personalId, e.name]), [[2, 'A'], [3, 'B'], [4, 'C']]);
   assert.equal((await (await post({ action: 'employee', name: 'Next' })).json()).personalId, 5);
+});
+
+test('ID changes migrate open and closed records and shifts, reject collisions, and preserve automatic numbering', async () => {
+  const { api, post, records, shifts } = fixture();
+  const employee = await (await post({ action: 'employee', name: 'A' })).json();
+  await post({ action: 'employee', name: 'B' });
+  await post({ action: 'clockIn', personalId: 1 });
+  await post({ action: 'clockOut', personalId: 1, recordId: '1' });
+  await post({ action: 'clockIn', personalId: 1 });
+  await post({ action: 'shift', personalId: 1, start: '2026-10-24T10:00', end: '2026-10-24T11:30' });
+  const change = newPersonalId => post({ action: 'changeId', personalId: 1, employeeId: employee._id, newPersonalId });
+  assert.equal((await change(2)).status, 409);
+  assert.equal((await change(0)).status, 400);
+  assert.equal((await change(50)).status, 200);
+  assert.ok(records.every(r => r.personalId === 50));
+  assert.equal(shifts[0].personalId, 50);
+  assert.equal((await api.GET(new Request('http://localhost/api/attendance?personalId=1'))).status, 404);
+  assert.equal((await (await post({ action: 'employee', name: 'C' })).json()).personalId, 51);
+  const active = await (await api.GET(new Request('http://localhost/api/attendance?mode=active'))).json();
+  assert.equal(active.length, 1);
+  assert.equal(active[0].name, 'A');
+  assert.equal(active[0].personalId, 50);
+  assert.equal((await post({ action: 'clockOut', personalId: 50, recordId: active[0]._id })).status, 200);
+  assert.equal((await post({ action: 'clockOut', personalId: 50, recordId: active[0]._id })).status, 409);
 });
 test('overlapping shifts are rejected but adjacent shifts are allowed', async () => {
   const { post, shifts } = fixture();

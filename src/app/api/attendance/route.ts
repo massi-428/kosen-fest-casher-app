@@ -16,6 +16,13 @@ export async function GET(request: Request) {
     if (!context) return unauthorizedResponse();
     const { storeId } = context;
     const params = new URL(request.url).searchParams;
+    if (params.get('mode') === 'active') {
+      const [records, employees] = await Promise.all([
+        AttendanceRecord.find({ storeId, clockOut: null }).sort({ clockIn: 1 }).lean(),
+        Employee.find({ storeId }).lean(),
+      ]);
+      return NextResponse.json(records.map(record => ({ ...record, name: employees.find(e => e.personalId === record.personalId)?.name || '' })));
+    }
     if (params.has('personalId')) {
       const personalId = personalIdFrom(params.get('personalId'));
       if (!personalId) return reply('個人IDを正しく入力してください');
@@ -34,12 +41,16 @@ export async function GET(request: Request) {
       ]);
       return NextResponse.json(shifts.filter(s => !active.some(a => a.personalId === s.personalId)).map(s => ({ ...s, name: employees.find(e => e.personalId === s.personalId)?.name || '' })));
     }
-    const [employees, records, shifts] = await Promise.all([
+    const [employees, records, shifts, totals] = await Promise.all([
       Employee.find({ storeId }).sort({ personalId: 1 }),
       AttendanceRecord.find({ storeId }).sort({ clockIn: -1 }).limit(100),
       Shift.find({ storeId, end: { $gte: new Date() } }).sort({ start: 1 }),
+      AttendanceRecord.aggregate([
+        { $match: { storeId, clockOut: { $ne: null } } },
+        { $group: { _id: '$personalId', milliseconds: { $sum: { $max: [0, { $subtract: ['$clockOut', '$clockIn'] }] } } } },
+      ]),
     ]);
-    return NextResponse.json({ employees, records, shifts });
+    return NextResponse.json({ employees, records, shifts, totals });
   } catch { return reply('勤怠情報を取得できませんでした', 500); }
 }
 
@@ -64,14 +75,27 @@ export async function POST(request: Request) {
     }
     const personalId = personalIdFrom(body.personalId);
     if (!personalId) return reply('個人IDを正しく入力してください');
-    if (!['clockIn', 'clockOut', 'shift', 'deleteShift'].includes(body.action)) return reply('操作が不正です');
+    if (!['clockIn', 'clockOut', 'shift', 'deleteShift', 'changeId'].includes(body.action)) return reply('操作が不正です');
+    const newPersonalId = personalIdFrom(body.newPersonalId);
+    if (body.action === 'changeId' && (!newPersonalId || newPersonalId >= Number.MAX_SAFE_INTEGER || !isValidObjectId(body.employeeId))) return reply('新しい個人IDを正しく入力してください');
     const dates = body.action === 'shift' ? shiftDates(body.start, body.end) : null;
-    if (body.action === 'shift' && !dates) return reply('シフトの開始・終了日時を正しく入力してください');
+    if (body.action === 'shift' && !dates) return reply('シフトは30分刻みで、終了を開始より後に設定してください');
     if (body.action === 'deleteShift' && !isValidObjectId(body.shiftId)) return reply('シフトIDが不正です');
     const result = await Employee.db.transaction(async session => {
       // Serialize changes for each employee, including simultaneous punches and overlapping shifts.
-      const employee = await Employee.findOneAndUpdate({ storeId, personalId }, { $inc: { revision: 1 } }, { session });
+      const employee = await Employee.findOneAndUpdate({ storeId, personalId, ...(body.employeeId ? { _id: body.employeeId } : {}) }, { $inc: { revision: 1 } }, { session });
       if (!employee) return { message: 'スタッフが見つかりません', status: 404 };
+      if (body.action === 'changeId' && newPersonalId) {
+        if (newPersonalId === personalId) return { message: '同じ個人IDです', status: 200 };
+        const existing = await Employee.exists({ storeId, personalId: newPersonalId }).session(session);
+        if (existing) return { message: 'その個人IDはすでに使われています', status: 409 };
+        // Keep automatic allocation above manually assigned IDs, in the same transaction.
+        await EmployeeCounter.findOneAndUpdate({ _id: storeId }, { $max: { value: newPersonalId } }, { upsert: true, session });
+        await Employee.updateOne({ _id: employee._id, storeId }, { $set: { personalId: newPersonalId } }, { session });
+        await AttendanceRecord.updateMany({ storeId, personalId }, { $set: { personalId: newPersonalId } }, { session });
+        await Shift.updateMany({ storeId, personalId }, { $set: { personalId: newPersonalId } }, { session });
+        return { message: `個人IDを${newPersonalId}に変更しました`, status: 200 };
+      }
       if (body.action === 'shift' && dates) {
         const overlap = await Shift.exists({ storeId, personalId, start: { $lt: dates.end }, end: { $gt: dates.start } }).session(session);
         if (overlap) return { message: '既存のシフトと時間が重なっています', status: 409 };
@@ -95,6 +119,7 @@ export async function POST(request: Request) {
     });
     return reply(result.message, result.status);
   } catch (error) {
+    if (error && typeof error === 'object' && 'code' in error && error.code === 11000) return reply('IDまたは勤怠状態が変更されました。再取得してください', 409);
     if (error instanceof SyntaxError) return reply('入力が不正です');
     return reply('保存できませんでした。再取得して状態を確認してください', 500);
   }
