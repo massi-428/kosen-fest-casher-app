@@ -60,7 +60,7 @@ export default function AttendancePage() {
     } finally { await refreshActive(); }
   };
 
-  return <main className="min-h-screen bg-gray-50 text-gray-900 p-3 lg:p-4">
+  return <main className="min-h-full bg-gray-50 text-gray-900 p-3 lg:p-4">
     <div className="max-w-7xl mx-auto space-y-3">
       <header className="flex flex-wrap items-center justify-between gap-4"><div><h1 className="text-xl font-black">勤怠管理</h1><p className="text-sm text-gray-500 mt-1">個人IDを入力して出勤・退勤を記録します。</p></div><Link href="/order" className={button}>注文画面へ</Link></header>
       {error && <div role="alert" className="bg-red-50 text-red-700 rounded-xl p-2">{error} <button disabled={busy} onClick={() => run(async () => { await lookup(); })} className="underline">再取得</button></div>}
@@ -75,18 +75,20 @@ export default function AttendancePage() {
           <p className="text-xs text-gray-500">ID入力 → Enterで確認 → Enterで打刻</p>
         </form>
       </section>
-      <section className="lg:col-start-1 lg:row-start-1 bg-white border rounded-xl p-3 space-y-2">
-        <div className="flex justify-between items-center gap-3"><h2 className="text-lg font-bold">出勤中のスタッフ{activeReady ? `（${activeStaff.length}人）` : ''}</h2><button className="underline text-sm" disabled={busy} onClick={() => void refreshActive()}>更新</button></div>
-        {activeError && <p role="alert" className="text-red-700">{activeError} 一覧を更新してください。</p>}
+      <section className="lg:col-start-1 lg:row-start-1 h-[clamp(18rem,calc(100dvh-15rem),42rem)] min-h-0 flex flex-col overflow-hidden bg-white border rounded-xl p-3 gap-2">
+        <div className="shrink-0 flex justify-between items-center gap-3 border-b border-gray-100 pb-2"><h2 id="active-staff-heading" className="text-lg font-bold">出勤中のスタッフ{activeReady ? `（${activeStaff.length}人）` : ''}</h2><button className="underline text-sm" disabled={busy} onClick={() => void refreshActive()}>更新</button></div>
+        {activeError && <p role="alert" className="shrink-0 text-red-700">{activeError} 一覧を更新してください。</p>}
+        <div role="region" aria-labelledby="active-staff-heading" tabIndex={0} className="flex-1 min-h-0 overflow-y-auto overscroll-contain [scrollbar-gutter:stable] rounded-lg bg-gray-50 p-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-yellow-400">
         {!activeReady && !activeError && <p>読み込み中…</p>}
         {activeReady && !activeError && !activeStaff.length && <p className="text-gray-500">出勤中のスタッフはいません。</p>}
-        <ul className="grid sm:grid-cols-2 xl:grid-cols-3 gap-2">{activeStaff.map(staff => <li key={staff._id} className="min-w-0 rounded-lg border border-gray-200 bg-gray-50 px-2 py-2 flex items-center justify-between gap-2"><div className="min-w-0"><p className="text-sm font-bold truncate" title={`ID ${staff.personalId} · ${staff.name}`}>{staff.personalId} · {staff.name}</p><p className="text-xs text-gray-500">{attendanceTime(staff.clockIn)}〜</p></div><button className="shrink-0 rounded-lg bg-orange-700 text-white text-xs font-bold px-2 min-h-9 disabled:opacity-40" disabled={busy || !!activeError} aria-label={`${staff.name}を退勤にする`} onClick={() => void run(async () => {
+        <ul className="flex flex-col gap-1.5">{activeStaff.map(staff => <li key={staff._id} className="min-w-0 shrink-0 rounded-lg border border-gray-200 bg-white px-3 py-2 flex items-center justify-between gap-3"><div className="min-w-0"><p className="text-sm font-bold truncate" title={`ID ${staff.personalId} · ${staff.name}`}>{staff.personalId} · {staff.name}</p><p className="text-xs text-gray-500">{attendanceTime(staff.clockIn)}〜</p></div><button className="shrink-0 rounded-lg bg-orange-700 text-white text-xs font-bold px-3 min-h-9 disabled:opacity-40" disabled={busy || !!activeError} aria-label={`${staff.name}を退勤にする`} onClick={() => void run(async () => {
           setSelected(null);
           try {
             const result = await postJson('/api/attendance', { action: 'clockOut', personalId: staff.personalId, recordId: staff._id });
             setMessage(`${staff.name}：${result.message}`);
           } finally { await refreshActive(); }
         })}>退勤</button></li>)}</ul>
+        </div>
       </section>
       </div>
       <nav aria-label="勤怠管理メニュー" className="border-t pt-2"><Link href="/attendance/manage" className="inline-flex rounded-xl border border-gray-300 bg-white px-3 py-2 font-bold hover:bg-gray-100">スタッフ・シフト管理 →</Link><p className="text-sm text-gray-500 mt-2">管理担当者向け：スタッフ一括登録・個人IDの確認・シフト設定・打刻履歴</p></nav>

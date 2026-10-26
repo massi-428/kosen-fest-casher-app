@@ -144,7 +144,7 @@ export default function KitchenDisplaySystem() {
   const currentPendingPage = Math.min(pendingPage, pendingPages - 1);
 
   return (
-    <div className="h-dvh bg-gray-800 p-2 font-sans text-gray-100 flex gap-2 overflow-hidden">
+    <div className="terminal-screen fixed inset-0 w-full h-dvh bg-gray-800 p-2 font-sans text-gray-100 flex gap-2 overflow-hidden overscroll-none">
       <div className="flex-1 flex flex-col min-w-0 min-h-0">
         <div className="flex justify-between items-center mb-2 px-2">
           <h1 className="text-xl font-bold tracking-wider flex items-center gap-3"><span className="bg-blue-600 px-3 py-0.5 rounded text-white shadow-lg border border-blue-400 text-sm">KDS</span><span className="text-gray-300">COOKING</span><span className="bg-gray-700 px-2 py-0.5 rounded-full text-lg font-mono">{activeOrders.length}</span></h1>

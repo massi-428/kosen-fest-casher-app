@@ -7,19 +7,26 @@ import Product from '@/models/Product';
 import Setting from '@/models/Setting';
 import CheckoutQuote from '@/models/CheckoutQuote';
 import { priceEditedItems } from '@/lib/order-accounting';
+import TicketCounter from '@/models/TicketCounter';
+import { businessDate } from '@/lib/business-day';
 
 export async function POST(request: Request) {
   try {
     await connectToDatabase();
     const context = await getActiveStoreContext(request);
     if (!context) return unauthorizedResponse();
+    const counter = await TicketCounter.findOne({ storeId: context.storeId });
+    if (counter?.closedDate === businessDate()) return NextResponse.json({ message: '本日の営業は締め切りました。翌日から注文を受け付けます。' }, { status: 409 });
     // Do not accept a first quote before its request-ID uniqueness index is ready.
     await CheckoutQuote.init();
     const body = await request.json();
     if (!isNonEmptyString(body.requestId, 100)) return badRequest('操作IDが正しくありません。');
     const filter = { storeId: context.storeId, userId: context.userId, requestId: body.requestId };
     const existing = await CheckoutQuote.findOne(filter);
-    if (existing) return NextResponse.json(existing);
+    if (existing) {
+      if (counter?.closedAt && new Date(existing.createdAt) <= counter.closedAt) return NextResponse.json({ message: '〆作業前の会計です。カートに戻って会計をやり直してください。' }, { status: 409 });
+      return NextResponse.json(existing);
+    }
     if (!Array.isArray(body.items) || !body.items.length || body.items.length > 100 || !isOptionalString(body.note, 500)) return badRequest('カートの内容が正しくありません。');
     const ids = body.items.map((item: { productId?: unknown }) => item?.productId);
     if (ids.some((id: unknown) => !isValidObjectId(id))) return badRequest('商品が削除されています。カートから取り除いてください。');

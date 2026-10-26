@@ -8,6 +8,8 @@ import TicketCounter from '@/models/TicketCounter';
 import { unauthorizedResponse } from '@/lib/auth';
 import { getActiveStoreContext } from '@/lib/store';
 import { badRequest, isNonEmptyString } from '@/lib/validation';
+import { withOpenBusiness, BusinessClosedError } from '@/lib/business-day';
+import type { ClientSession } from 'mongoose';
 
 export const dynamic = 'force-dynamic';
 
@@ -17,11 +19,11 @@ const DEFAULT_MAX_ITEMS_PER_ORDER = 10;
 const DUPLICATE_KEY_ERROR_CODE = 11000;
 const OPEN_STATUSES = ['active', 'pending'];
 
-const issueTicketCandidate = async (storeId: string, maxTicketNumber: number) => {
+const issueTicketCandidate = async (storeId: string, maxTicketNumber: number, session: ClientSession) => {
   const counter = await TicketCounter.findOneAndUpdate(
     { storeId },
     [{ $set: { storeId, lastIssuedNumber: { $let: { vars: { nextNumber: { $add: [{ $ifNull: ['$lastIssuedNumber', 0] }, 1] } }, in: { $cond: [{ $gt: ['$$nextNumber', maxTicketNumber] }, 1, '$$nextNumber'] } } } } }],
-    { new: true, upsert: true, setDefaultsOnInsert: true },
+    { new: true, upsert: true, setDefaultsOnInsert: true, session },
   );
   return String(counter.lastIssuedNumber);
 };
@@ -134,11 +136,16 @@ export async function POST(request: Request) {
     const maxTicketNumber = Number.isInteger(setting?.maxTicketNumber) && setting.maxTicketNumber > 0 ? setting.maxTicketNumber : DEFAULT_MAX_TICKET_NUMBER;
     const lostTickets = new Set<number>((Array.isArray(setting?.lostTickets) ? setting.lostTickets : []).map(Number));
     for (let i = 0; i < maxTicketNumber; i += 1) {
-      const candidate = await issueTicketCandidate(storeId, maxTicketNumber);
-      if (lostTickets.has(Number(candidate))) continue;
-      if (await Order.exists({ storeId, ticketNumber: candidate, status: { $in: OPEN_STATUSES } })) continue;
       try {
-        const order = await Order.create({ ownerId: context.userId, storeId, requestId, ticketNumber: candidate, items: safeItems, totalAmount, status: 'active', paymentMethod: body.paymentMethod, receivedAmount, changeAmount, note: quote.note || '' });
+        const order = await withOpenBusiness(storeId, async (session, closedAt) => {
+          if (closedAt && new Date(quote.createdAt) <= closedAt) throw new BusinessClosedError('〆作業前の会計です。カートに戻り、会計金額を再確認してください。');
+          const candidate = await issueTicketCandidate(storeId, maxTicketNumber, session);
+          if (lostTickets.has(Number(candidate))) return null;
+          if (await Order.exists({ storeId, ticketNumber: candidate, status: { $in: OPEN_STATUSES } }).session(session)) return null;
+          const [created] = await Order.create([{ ownerId: context.userId, storeId, requestId, ticketNumber: candidate, items: safeItems, totalAmount, status: 'active', paymentMethod: body.paymentMethod, receivedAmount, changeAmount, note: quote.note || '' }], { session });
+          return created;
+        });
+        if (!order) continue;
         reservedItemCount = 0;
         return orderSuccess(order, false, capacityWarning);
       } catch (error) {
@@ -156,6 +163,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ message: '利用可能な整理券番号がありません。' }, { status: 409 });
   } catch (error) {
     if (reservedItemCount && storeId) await Setting.updateOne({ storeId, key: 'app_config' }, { $inc: { pendingItemCount: -reservedItemCount } }).catch(() => undefined);
+    if (error instanceof BusinessClosedError) return NextResponse.json({ message: error.message }, { status: 409 });
     console.error('注文登録エラー:', error);
     return NextResponse.json({ message: '注文の登録に失敗しました。' }, { status: 500 });
   }

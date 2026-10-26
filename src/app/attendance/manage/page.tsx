@@ -40,7 +40,7 @@ function AttendanceManager({ password, initialData, onLock }: { password: string
   const staffName = (personalId: number) => data.employees.find(e => e.personalId === personalId)?.name || '';
   const currentEmployees = data.employees.filter(e => !e.archivedAt);
 
-  return <main className="min-h-screen bg-gray-50 text-gray-900 p-3 lg:p-4">
+  return <main className="min-h-full bg-gray-50 text-gray-900 p-3 lg:p-4">
     <div className="max-w-5xl mx-auto space-y-3">
       <header className="flex flex-wrap items-center justify-between gap-4"><div><h1 className="text-xl font-black">スタッフ・シフト管理</h1><p className="text-sm text-gray-500 mt-1">スタッフ・個人ID・シフト・打刻履歴（日本時間）</p></div><div className="flex gap-2"><button type="button" onClick={onLock} className={button}>ロック</button><Link href="/attendance" className={button}>勤怠管理へ戻る</Link></div></header>
       {error && <div role="alert" className="bg-red-50 text-red-700 rounded-xl p-2">{error} <button disabled={busy} onClick={() => run(async () => { await refresh(); })} className="underline">再取得</button></div>}
@@ -111,7 +111,7 @@ export default function AttendanceManagePage() {
     finally { if (version === attempt.current) setBusy(false); }
   };
   if (access) return <AttendanceManager password={access.password} initialData={access.data} onLock={() => { attempt.current++; setAccess(null); setPassword(''); setError(''); setBusy(false); }} />;
-  return <main className="min-h-screen bg-gray-50 p-4 text-gray-900 flex items-center justify-center"><section className="w-full max-w-sm rounded-2xl border bg-white p-6 space-y-4">
+  return <main className="min-h-full bg-gray-50 p-4 text-gray-900 flex items-center justify-center"><section className="w-full max-w-sm rounded-2xl border bg-white p-6 space-y-4">
     <h1 className="text-xl font-black">スタッフ・シフト管理</h1>
     <p className="text-sm text-gray-600">現在ログインしている店舗アカウントのパスワードを入力してください。</p>
     <form onSubmit={e => { e.preventDefault(); void unlock(); }} className="space-y-3">

@@ -361,7 +361,7 @@ export default function OrderPage() {
   };
 
   return (
-    <div className="fixed inset-0 w-screen h-dvh bg-gray-100 overflow-hidden overscroll-none font-sans text-gray-900 flex relative">
+    <div className="terminal-screen fixed inset-0 w-full h-dvh bg-gray-100 overflow-hidden overscroll-none font-sans text-gray-900 flex">
       <SharedResultModal isOpen={modals.result} title={modalData.title || ''} message={modalData.message || ''} type={modalData.type || 'success'} onClose={() => toggleModal('result', false)} />
       <SharedConfirmModal isOpen={modals.confirm} message={modalData.message || ''} onConfirm={modalData.onConfirm || (() => {})} onCancel={closeConfirmModal} confirmLabel={modalData.confirmLabel} cancelLabel={modalData.cancelLabel} />
       <Toast show={toast.show} message={toast.message} title={toast.title} type={toast.type} onClose={() => setToast((prev) => ({ ...prev, show: false }))} />

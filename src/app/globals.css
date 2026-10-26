@@ -7,3 +7,23 @@
 body {
   font-family: var(--font-line-seed), "Yu Gothic", "Hiragino Kaku Gothic ProN", sans-serif;
 }
+
+/* Lock the document on POS, KDS and attendance screens. Inner content still scrolls. */
+html:has(.terminal-screen),
+body:has(.terminal-screen) {
+  height: 100%;
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
+/* Fixed positioning also prevents document dragging on iPad Safari. */
+body:has(.terminal-screen) {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+}
+
+/* Contain scrolling in lists and dialogs, including those inside the terminal. */
+.terminal-screen .overflow-y-auto {
+  overscroll-behavior-y: none;
+}
