@@ -109,6 +109,24 @@ test('isolated real MongoDB: settlements, tickets, quotes, retries, legacy order
       const response = await orders.GET(new Request('http://localhost/api/orders?date=2026-09-12&ticket=1&status=cancelled'));
       assert.equal(response.status, 200); const data = await response.json(); assert.equal(data.total, 1); assert.equal(data.orders[0]._id, String(oldId));
     });
+    await t.test('four clients issue unique orders; closing blocks and reopening restores checkout', async () => {
+      await Product.updateOne({ _id: product._id }, { $set: { isAvailable: true, price: 800 } });
+      const ids = Array.from({ length: 4 }, () => randomUUID());
+      const quoteBodies = ids.map(requestId => ({ requestId, items: [{ productId: String(product._id), quantity: 1, detail: '', selectedOptionNames: [] }] }));
+      for (const response of await Promise.all(quoteBodies.map(body => call(quotes.POST, body)))) assert.equal(response.status, 200);
+      const responses = await Promise.all(ids.map(requestId => call(orders.POST, { requestId, expectedTotal: 800, paymentMethod: '現金', receivedAmount: 1000 })));
+      for (const response of responses) assert.equal(response.status, 201);
+      const created = await Order.find({ storeId, requestId: { $in: ids } });
+      assert.equal(created.length, 4); assert.equal(new Set(created.map(order => order.ticketNumber)).size, 4);
+      const business = load('src/app/api/business-day/route.ts');
+      const date = new Date(Date.now() + 9 * 3600000).toISOString().slice(0, 10);
+      assert.equal((await call(business.POST, { date, confirm: true })).status, 409);
+      await Order.updateMany({ storeId, status: { $in: ['active', 'pending'] } }, { $set: { status: 'completed' } });
+      assert.equal((await call(business.POST, { date, confirm: true })).status, 200);
+      assert.equal((await call(quotes.POST, { ...quoteBodies[0], requestId: randomUUID() })).status, 409);
+      assert.equal((await call(business.POST, { date, confirm: true, action: 'reopen' })).status, 200);
+      assert.equal((await call(quotes.POST, { ...quoteBodies[0], requestId: randomUUID() })).status, 200);
+    });
   } catch (error) {
     if (error?.name?.startsWith('Mongo')) throw new Error('Isolated MongoDB test failed: ' + error.name + ' code=' + (error.code || 'unknown') + ' (connection details suppressed)');
     throw error;

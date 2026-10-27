@@ -1,6 +1,7 @@
 "use client";
 
 import { Toast } from '@/components/common/Toast';
+import { TestDataReset } from '@/components/admin/TestDataReset';
 
 import { useEffect, useState } from 'react';
 
@@ -348,7 +349,8 @@ export default function AdminPage() {
                   {loadingDb ? '更新中...' : '再読み込み'}
                 </button>
               </div>
-              <p className="text-xs text-red-600 mb-4 font-bold">現在のコレクションと件数を表示します。削除操作はこの画面からはできません。</p>
+              <p className="text-xs text-red-600 mb-4 font-bold">現在のコレクションと件数を表示します。</p>
+              <TestDataReset />
 
               <div className="space-y-2 max-h-60 overflow-y-auto pr-2">
                 {dbStats.length === 0 && !loadingDb ? (

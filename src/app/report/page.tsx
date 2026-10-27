@@ -3,6 +3,7 @@
 import { useRef, useState, useEffect, useCallback, useMemo } from 'react';
 
 import { isSalesOrder, type Settlement } from '@/lib/order-accounting';
+import { BusinessDayPanel } from '@/components/common/BusinessDayPanel';
 
 // --- ユーティリティ ---
 const useRouter = () => ({
@@ -57,11 +58,7 @@ type Order = {
 
 // 今日の日付を YYYY-MM-DD 形式で取得するヘルパー
 const getTodayString = () => {
-  const d = new Date();
-  const year = d.getFullYear();
-  const month = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
+  return new Date(Date.now() + 9 * 3600000).toISOString().slice(0, 10);
 };
 
 export default function ReportPage() {
@@ -265,6 +262,7 @@ export default function ReportPage() {
         </button>
       </div>
 
+      {date === getTodayString() ? <BusinessDayPanel /> : <button className="mb-6 rounded bg-amber-200 p-3 font-bold" onClick={() => setDate(getTodayString())}>本日の日報・〆作業へ戻る</button>}
       {/* 日付選択エリア */}
       <div className="flex justify-center items-center gap-4 mb-8">
         <button 

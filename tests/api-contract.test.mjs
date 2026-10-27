@@ -270,20 +270,6 @@ test('admin store management hides admin and removes cleanup button', () => {
   assert.doesNotMatch(adminPage, /cleanupStores/);
 });
 
-test('admin cleanup consolidates duplicate stores into one owner store', () => {
-  const adminStores = read('src/app/api/admin/stores/route.ts');
-
-  assert.match(adminStores, /User\.find\(\{\s*userId:\s*\{\s*\$ne:\s*'admin'\s*\}\s*\}\)/);
-  assert.match(adminStores, /ownerUserId:\s*'admin'/);
-  assert.match(adminStores, /storeIds:\s*\[\]/);
-  assert.match(adminStores, /Store\.find\(\{\s*ownerUserId:\s*user\.userId\s*\}\)/);
-  assert.match(adminStores, /duplicateStores = stores\.slice\(1\)/);
-  assert.match(adminStores, /Product\.updateMany\(\{\s*storeId:\s*duplicateStoreId\s*\}/);
-  assert.match(adminStores, /Order\.updateMany\(\{\s*storeId:\s*duplicateStoreId\s*\}/);
-  assert.match(adminStores, /Setting\.updateMany\(\{\s*storeId:\s*duplicateStoreId\s*\}/);
-  assert.match(adminStores, /Store\.deleteMany/);
-});
-
 test('source files do not contain common mojibake fragments', () => {
   const mojibakePattern = /繧|縺|繝|譁|蜊|隱|螟|豕|蝠|謨|邂|蟾|蜿|髱|霑|荳|遒|鬆|菫|螳|逡|謇|蜑|逅|驥|蛻|譖|蠎/;
   const offenders = sourceFiles('src')

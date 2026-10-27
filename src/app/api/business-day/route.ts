@@ -7,17 +7,37 @@ import Order from '@/models/Order';
 import { businessDate } from '@/lib/business-day';
 
 export const dynamic = 'force-dynamic';
+export async function GET(request: Request) {
+  try {
+    await connectToDatabase();
+    const context = await getActiveStoreContext(request);
+    if (!context) return unauthorizedResponse();
+    const date = businessDate();
+    const counter = await TicketCounter.findOne({ storeId: context.storeId });
+    const unfinished = await Order.countDocuments({ storeId: context.storeId, $or: [
+      { status: { $in: ['active', 'pending'] } }, { settlementLock: { $nin: [null, ''] } },
+    ] });
+    return NextResponse.json({ date, closed: counter?.closedDate === date, unfinished });
+  } catch { return NextResponse.json({ message: '営業状態を取得できません。再確認してください。' }, { status: 500 }); }
+}
 export async function POST(request: Request) {
   try {
     await connectToDatabase();
     const context = await getActiveStoreContext(request);
     if (!context) return unauthorizedResponse();
     const body = await request.json();
+    if (body?.action && !['close', 'reopen'].includes(body.action)) return NextResponse.json({ message: '操作が正しくありません' }, { status: 400 });
     const today = businessDate();
     if (body?.date !== today || body?.confirm !== true) return NextResponse.json({ message: '本日の営業日を確認してから〆作業を実行してください' }, { status: 400 });
     const { storeId } = context;
     const result = await TicketCounter.db.transaction(async session => {
       const counter = await TicketCounter.findOneAndUpdate({ storeId }, { $inc: { businessRevision: 1 } }, { upsert: true, new: true, session });
+      if (body.action === 'reopen') {
+        if (counter.closedDate !== today) return { status: 200, message: 'すでに営業中です' };
+        // Keep closedAt to reject stale checkouts from before closing/resetting.
+        await TicketCounter.updateOne({ storeId }, { $unset: { closedDate: 1 } }, { session });
+        return { status: 200, message: '営業を再開しました。会計途中だった注文は、カートに戻って金額を再確認してください。' };
+      }
       if (counter.closedDate === today) return { status: 200, message: '本日の〆作業は完了済みです' };
       const pending = await Order.exists({ storeId, $or: [{ status: { $in: ['active', 'pending'] } }, { settlementLock: { $nin: [null, ''] } }] }).session(session);
       if (pending) return { status: 409, message: '未提供・保留・精算中の注文があります。注文履歴とKD画面で処理を完了してください' };
