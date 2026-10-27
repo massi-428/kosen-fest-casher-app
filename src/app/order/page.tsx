@@ -386,7 +386,6 @@ export default function OrderPage() {
             </button>
             <SharedHamburgerMenu
               onNavigate={(path) => { persistDraft(); navigateTo(path); }}
-              onReset={() => toggleModal('confirm', true, { message: '全データをリセットして初期化しますか？\n商品リストは保持されます。', onConfirm: async () => { await apiFetch('/api/debug/reset', { method: 'DELETE' }); window.location.reload(); } })}
               onLogout={async () => { await apiFetch('/api/logout', { method: 'POST' }); navigateTo('/login'); }}
             />
           </div>

@@ -4,7 +4,6 @@ import { useState } from 'react';
 
 type HamburgerMenuProps = {
   onNavigate: (path: string) => void;
-  onReset: () => void;
   onLogout?: () => void;
 };
 
@@ -16,7 +15,7 @@ const menuItems = [
   { path: '/kds', label: '調理画面 (KDS)', icon: '/image/icons/ROOTINE_icon_kd_system.png' },
 ];
 
-export const HamburgerMenu = ({ onNavigate, onReset, onLogout }: HamburgerMenuProps) => {
+export const HamburgerMenu = ({ onNavigate, onLogout }: HamburgerMenuProps) => {
   const [isOpen, setIsOpen] = useState(false);
 
   return (
@@ -45,9 +44,6 @@ export const HamburgerMenu = ({ onNavigate, onReset, onLogout }: HamburgerMenuPr
                 </button>
               ))}
               <div className="border-t border-gray-700 my-2"></div>
-              <button onClick={() => { onReset(); setIsOpen(false); }} className="block w-full text-left px-5 py-4 text-red-300 hover:bg-red-950/50 hover:text-red-200 transition text-xs font-black uppercase tracking-widest">
-                データリセット
-              </button>
               {onLogout && (
                 <button onClick={() => { onLogout(); setIsOpen(false); }} className="block w-full text-left px-5 py-4 text-gray-300 hover:bg-gray-800 hover:text-white transition text-xs font-black uppercase tracking-widest">
                   ログアウト

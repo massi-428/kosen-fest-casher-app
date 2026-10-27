@@ -37,7 +37,7 @@ test('missing DB configuration permits imports and rejects connection without to
   assert.deepEqual(await response.json(), { message: '商品情報の取得に失敗しました' });
 });
 
-test('debug reset is denied before DB/auth/deletion outside local development', async t => {
+test('debug reset is denied before DB/auth/deletion in every environment', async t => {
   const fail = () => assert.fail('blocked requests must not touch DB, auth, or orders');
   const route = createLoader({
     '@/lib/db': fail, '@/lib/store': { getActiveStoreContext: fail },
@@ -47,7 +47,7 @@ test('debug reset is denied before DB/auth/deletion outside local development', 
     ['production', undefined, undefined], ['production', '1', 'production'],
     ['production', '1', 'preview'], ['development', '1', 'preview'],
     ['development', undefined, 'preview'], ['development', '1', undefined],
-    ['test', undefined, undefined], [undefined, undefined, undefined],
+    ['development', undefined, undefined], ['test', undefined, undefined], [undefined, undefined, undefined],
   ]) {
     setEnv(t, 'NODE_ENV', nodeEnv);
     setEnv(t, 'VERCEL', vercel);
@@ -56,26 +56,3 @@ test('debug reset is denied before DB/auth/deletion outside local development', 
   }
 });
 
-test('local reset retains authentication, store scope, and connection failure handling', async t => {
-  setEnv(t, 'NODE_ENV', 'development');
-  setEnv(t, 'VERCEL', undefined);
-  setEnv(t, 'VERCEL_ENV', undefined);
-  let context = null;
-  let failure = false;
-  const deleted = [];
-  const route = createLoader({
-    '@/lib/db': async () => { if (failure) throw new Error('connection failed'); },
-    '@/lib/store': { getActiveStoreContext: async () => context },
-    '@/models/Order': { deleteMany: async filter => deleted.push(filter) },
-    '@/lib/auth': { unauthorizedResponse: () => Response.json({}, { status: 401 }) },
-  })('src/app/api/debug/reset/route.ts');
-  const request = new Request('http://localhost/api/debug/reset', { method: 'DELETE' });
-  assert.equal((await route.DELETE(request)).status, 401);
-  assert.equal(deleted.length, 0);
-  context = { storeId: 'local-store' };
-  assert.equal((await route.DELETE(request)).status, 200);
-  assert.deepEqual(deleted, [{ storeId: 'local-store' }]);
-  failure = true;
-  assert.equal((await route.DELETE(request)).status, 500);
-  assert.equal(deleted.length, 1);
-});
