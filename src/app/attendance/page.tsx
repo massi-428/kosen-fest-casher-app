@@ -1,5 +1,7 @@
 "use client";
 
+import { Toast } from '@/components/common/Toast';
+
 import Link from 'next/link';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { requestJson, postJson } from '@/lib/client-api';
@@ -64,7 +66,7 @@ export default function AttendancePage() {
     <div className="max-w-7xl mx-auto space-y-3">
       <header className="flex flex-wrap items-center justify-between gap-4"><div><h1 className="text-xl font-black">勤怠管理</h1><p className="text-sm text-gray-500 mt-1">個人IDを入力して出勤・退勤を記録します。</p></div><Link href="/order" className={button}>注文画面へ</Link></header>
       {error && <div role="alert" className="bg-red-50 text-red-700 rounded-xl p-2">{error} <button disabled={busy} onClick={() => run(async () => { await lookup(); })} className="underline">再取得</button></div>}
-      {message && <p role="status" className="bg-green-50 text-green-800 rounded-xl p-2">{message}</p>}
+      <Toast show={Boolean(message)} message={message} title="保存完了" onClose={() => setMessage('')} />
       <div className="grid lg:grid-cols-[minmax(0,2fr)_minmax(280px,1fr)] gap-3 items-start">
       <section className="lg:col-start-2 lg:row-start-1 bg-white border rounded-xl p-3 space-y-3">
         <h2 className="text-lg font-bold">出勤・退勤</h2>

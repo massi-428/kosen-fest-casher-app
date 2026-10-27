@@ -1,5 +1,14 @@
 @import "tailwindcss";
 
+@keyframes toast-from-top {
+  from { opacity: 0; transform: translateY(-120%); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.toast-from-top { animation: toast-from-top 220ms ease-out; }
+@media (prefers-reduced-motion: reduce) {
+  .toast-from-top { animation: none; }
+}
+
 @theme inline {
   --font-sans: var(--font-line-seed), "Yu Gothic", "Hiragino Kaku Gothic ProN", sans-serif;
 }

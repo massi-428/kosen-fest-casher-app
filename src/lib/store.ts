@@ -6,6 +6,9 @@ import { getSession } from '@/lib/auth';
 import { getStoreLimit } from '@/lib/systemSettings';
 
 const DEFAULT_STORE_SUFFIX = ' store';
+// This only skips repeated legacy migration work, never authentication checks.
+// Cache per instance for five minutes; retries and cold starts remain safe.
+const migrations = new Map<string, { promise?: Promise<void>; expires: number }>();
 
 export const canCreateStore = async () => {
   const [storeCount, maxStores] = await Promise.all([
@@ -43,14 +46,29 @@ export const userCanAccessStore = async (userId: string, storeId: string) => {
 };
 
 export const migrateLegacyOwnerDataToStore = async (userId: string, storeId: string) => {
-  await Promise.all([
-    Product.updateMany({ ownerId: userId, storeId: { $exists: false } }, { $set: { storeId } }),
-    Product.updateMany({ ownerId: userId, storeId: null }, { $set: { storeId } }),
-    Order.updateMany({ ownerId: userId, storeId: { $exists: false } }, { $set: { storeId } }),
-    Order.updateMany({ ownerId: userId, storeId: null }, { $set: { storeId } }),
-    Setting.updateMany({ ownerId: userId, storeId: { $exists: false } }, { $set: { storeId } }),
-    Setting.updateMany({ ownerId: userId, storeId: null }, { $set: { storeId } }),
-  ]);
+  const key = JSON.stringify([userId, storeId]);
+  const existing = migrations.get(key);
+  if (existing?.promise) return existing.promise;
+  if (existing && existing.expires > Date.now()) return;
+  const entry: { promise?: Promise<void>; expires: number } = { expires: 0 };
+  entry.promise = Promise.resolve().then(async () => {
+    // MongoDB's null match includes missing fields. Run sequentially so a single
+    // request does not occupy the entire connection pool during migration.
+    for (const model of [Product, Order, Setting]) {
+      await model.updateMany({ ownerId: userId, storeId: null }, { $set: { storeId } });
+    }
+    entry.expires = Date.now() + 5 * 60 * 1000;
+  }).catch(error => {
+    migrations.delete(key);
+    throw error;
+  }).finally(() => {
+    entry.promise = undefined;
+    for (const [cachedKey, value] of migrations) {
+      if (!value.promise && (value.expires <= Date.now() || migrations.size > 128)) migrations.delete(cachedKey);
+    }
+  });
+  migrations.set(key, entry);
+  return entry.promise;
 };
 
 export const getActiveStoreContext = async (request: Request) => {

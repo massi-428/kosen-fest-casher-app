@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { BaseModal } from '@/components/BaseModal';
+import { Toast } from '@/components/common/Toast';
 
 export type CustomOption = {
   name: string;
@@ -53,10 +54,12 @@ type LostTicketModalProps = {
   onClose: () => void;
 };
 
-export const ResultModal = ({ isOpen, title, message, type, onClose }: ResultModalProps) => (
+export const ResultModal = ({ isOpen, title, message, type, onClose }: ResultModalProps) => type === 'success' ? (
+  <Toast show={isOpen} title={title} message={message} onClose={onClose} />
+) : (
   <BaseModal isOpen={isOpen} onClose={onClose}>
-    <div className={`text-center mb-4 text-4xl ${type === 'success' ? 'text-green-500' : 'text-red-500'}`}>
-      {type === 'success' ? '✓' : '!'}
+    <div className="text-center mb-4 text-4xl text-red-500">
+      !
     </div>
     <h3 className="text-xl font-bold text-gray-800 text-center mb-2">{title}</h3>
     <p className="text-gray-600 text-center mb-6 whitespace-pre-wrap">{message}</p>

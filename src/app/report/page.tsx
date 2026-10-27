@@ -250,7 +250,7 @@ export default function ReportPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-100 p-6 font-sans text-gray-900">
+    <div className="min-h-dvh bg-gray-100 p-6 font-sans text-gray-900">
       
       {/* ヘッダー */}
       <div className="flex justify-between items-center mb-8 bg-white p-4 rounded-xl shadow-sm">

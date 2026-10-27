@@ -65,7 +65,10 @@ function harness(seed = [initial()]) {
     '@/models/Order': Order,
     '@/models/Product': { find: async () => [{ _id: id(3), name: 'コーヒー', price: 800 }] },
     '@/models/Setting': { findOne: async () => ({ customizations: [], cashCalculationEnabled: true, cashPaymentMethod: '現金' }), updateOne: async () => { if (state.failCounter) throw new Error('simulated counter outage'); } },
-    '@/models/TicketCounter': {},
+    '@/models/TicketCounter': {
+      db: { transaction: async action => action({}) },
+      findOneAndUpdate: async () => ({ closedDate: null, closedAt: null }),
+    },
     '@/models/CheckoutQuote': {},
   };
   const operations = load('src/app/api/settlements/route.ts', mocks);

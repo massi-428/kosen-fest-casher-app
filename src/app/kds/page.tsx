@@ -2,6 +2,7 @@
 
 import { useRef, useState, useEffect, useCallback } from 'react';
 import { summarizeKitchenOrders, wrapKitchenText } from '@/lib/kds-display';
+import { startBrowserPolling } from '@/lib/polling';
 
 const apiFetch = async (url: string, options: RequestInit = {}) => {
   try {
@@ -98,28 +99,45 @@ export default function KitchenDisplaySystem() {
   const busyRef = useRef(new Set<string>());
   const [busy, setBusy] = useState<string[]>([]);
 
-  const fetchSequence = useRef(0);
-  const fetchOrders = useCallback(async () => {
-    const sequence = ++fetchSequence.current;
+  const pollerRef = useRef<ReturnType<typeof startBrowserPolling> | null>(null);
+  const loadOrders = useCallback(async (signal: AbortSignal) => {
     setLoading(true);
+    const controller = new AbortController();
+    const cancel = () => controller.abort();
+    signal.addEventListener('abort', cancel, { once: true });
+    if (signal.aborted) controller.abort();
+    const timeout = setTimeout(cancel, 15000);
     try {
-      const res = await apiFetch('/api/orders?scope=open', { cache: 'no-store' });
-      if (sequence !== fetchSequence.current) return;
+      const res = await apiFetch('/api/orders?scope=open', { cache: 'no-store', signal: controller.signal });
+      if (signal.aborted) return false;
       if (!res.ok) throw new Error('注文を取得できません。最後に取得した内容を表示しています。');
       if (res.ok) {
         const data: Order[] = await res.json();
-        if (sequence !== fetchSequence.current) return;
-        if (!Array.isArray(data)) throw new Error('注文の形式が正しくありません。');
+        if (signal.aborted) return false;
+        if (!Array.isArray(data) || !data.every(order => order && typeof order._id === 'string' && Array.isArray(order.items) && Number.isFinite(new Date(order.createdAt).getTime()) && order.items.every(item => item && typeof item.productName === 'string' && Number.isFinite(item.quantity)))) throw new Error('注文の形式が正しくありません。');
         setLastUpdated(new Date().toLocaleTimeString()); setFetchError('');
         const uniqueOrdersMap = new Map<string, Order>();
         data.forEach(order => { if (order._id) uniqueOrdersMap.set(String(order._id), order); });
         const uniqueOrders = Array.from(uniqueOrdersMap.values()) as Order[];
         setOrders(uniqueOrders.filter(o => o.status === 'active' || o.status === 'pending').sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()));
       }
-    } catch (error) { if (sequence === fetchSequence.current) setFetchError(error instanceof Error ? error.message : '通信エラー'); } finally { if (sequence === fetchSequence.current) setLoading(false); }
+      return true;
+    } catch (error) {
+      if (!signal.aborted) setFetchError(error instanceof Error ? error.message : '通信エラー');
+      return false;
+    } finally {
+      clearTimeout(timeout);
+      signal.removeEventListener('abort', cancel);
+      if (!signal.aborted) setLoading(false);
+    }
   }, []);
 
-  useEffect(() => { fetchOrders(); const interval = setInterval(fetchOrders, 5000); return () => clearInterval(interval); }, [fetchOrders]);
+  useEffect(() => {
+    const poller = startBrowserPolling(loadOrders);
+    pollerRef.current = poller;
+    return () => { poller.stop(); pollerRef.current = null; };
+  }, [loadOrders]);
+  const fetchOrders = useCallback(() => pollerRef.current?.refresh(true) ?? Promise.resolve(), []);
 
   const updateStatus = async (orderId: string, ticketNumber: string, newStatus: OrderStatus) => {
     if (busyRef.current.has(orderId)) return;
@@ -151,10 +169,10 @@ export default function KitchenDisplaySystem() {
         </div>
         <div className="mb-2 flex shrink-0 items-center justify-between gap-3 rounded bg-gray-900 px-2 py-1 text-xs">
           <div role="status" className="min-w-0">
-            <p>{loading ? '読み込み中…' : '最終更新: ' + (lastUpdated || '未取得')}</p>
+            <p>最終更新: {lastUpdated || '未取得'}{loading && ' ／更新中…'}</p>
             {(fetchError || operationError) && <p className="text-red-300">{fetchError || operationError}</p>}
           </div>
-          <button type="button" onClick={fetchOrders} aria-label="注文を再読み込み" title="再読み込み" className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-gray-600 bg-gray-700 text-gray-100 transition hover:bg-gray-600 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400">
+          <button type="button" onClick={() => void pollerRef.current?.refresh()} disabled={loading} aria-busy={loading} aria-label="注文を再読み込み" title="再読み込み" className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-gray-600 bg-gray-700 text-gray-100 transition hover:bg-gray-600 active:scale-95 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400">
             <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5"><path d="M20 7v5h-5" /><path d="M4 17v-5h5" /><path d="M6.1 7a7 7 0 0 1 11.55-1.65L20 8M4 16l2.35 2.65A7 7 0 0 0 17.9 17" /></svg>
           </button>
         </div>

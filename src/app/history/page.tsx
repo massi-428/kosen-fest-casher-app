@@ -6,6 +6,7 @@ import { BaseModal } from '@/components/BaseModal';
 import { EditOrderModal, type EditableOrderItem, type EditSettlement } from '@/components/order/EditOrderModal';
 
 import { jstToday } from '@/lib/history-query';
+import { startBrowserPolling } from '@/lib/polling';
 import { requestJson, postJson } from '@/lib/client-api';
 import { SettlementModal } from '@/components/order/SettlementModal';
 import type { SettlementOperation } from '@/lib/settlement-types';
@@ -54,7 +55,6 @@ export default function HistoryPage() {
   const [lastUpdated, setLastUpdated] = useState<string>("");
   const [fetchError, setFetchError] = useState('');
   const [pendingError, setPendingError] = useState('');
-  const historyInFlight = useRef(false);
   const [operationError, setOperationError] = useState('');
   const busyRef = useRef(new Set<string>());
   const [busy, setBusy] = useState<string[]>([]);
@@ -84,22 +84,29 @@ export default function HistoryPage() {
   const pendingSequence = useRef(0);
   const fetchPending = useCallback(async () => {
     const sequence = ++pendingSequence.current;
-    try { const data = await requestJson('/api/settlements'); if (!Array.isArray(data)) throw new Error('精算状況が不正です。'); if (sequence !== pendingSequence.current) return; setPendingSettlements(data); setPendingError(''); }
-    catch { if (sequence === pendingSequence.current) setPendingError('未完了の精算を取得できません。再取得してください。'); }
+    try { const data = await requestJson('/api/settlements'); if (!Array.isArray(data)) throw new Error('精算状況が不正です。'); if (sequence !== pendingSequence.current) return false; setPendingSettlements(data); setPendingError(''); return true; }
+    catch { if (sequence === pendingSequence.current) setPendingError('未完了の精算を取得できません。再取得してください。'); return false; }
   }, []);
   const fetchOrders = useCallback(async () => {
     const sequence = ++fetchSequence.current;
-    historyInFlight.current = true; setLoading(true);
+    setLoading(true);
     try {
       const data = await requestJson('/api/orders?' + new URLSearchParams({ date, ticket, status: filterStatus, page: String(page) }));
       if (sequence !== fetchSequence.current || currentQuery.current !== queryKey) return;
       if (!data || !Array.isArray(data.orders) || !Number.isInteger(data.total) || !Array.isArray(data.hourly) || !data.orders.every((o: Order) => o && typeof o._id === 'string' && Array.isArray(o.items) && Number.isFinite(o.totalAmount) && Number.isFinite(new Date(o.createdAt).getTime()) && o.items.every(i => i && typeof i.productName === 'string' && Number.isFinite(i.quantity) && Number.isFinite(i.amount)))) throw new Error('注文履歴の応答形式が正しくありません。');
       setOrders(data.orders); setTotal(data.total); setLoadedQuery(queryKey); setLastUpdated(new Date().toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' })); setFetchError('');
       const counts = new Array(24).fill(0); for (const row of data.hourly) { if (Number.isInteger(row._id) && row._id >= 0 && row._id < 24) counts[row._id] = row.count; } setHourlyStats(counts);
-    } catch (error) { if (sequence === fetchSequence.current && currentQuery.current === queryKey) setFetchError(error instanceof Error ? error.message : '通信エラー'); }
-    finally { if (sequence === fetchSequence.current && currentQuery.current === queryKey) { historyInFlight.current = false; setLoading(false); } }
+      return true;
+    } catch (error) { if (sequence === fetchSequence.current && currentQuery.current === queryKey) setFetchError(error instanceof Error ? error.message : '通信エラー'); return false; }
+    finally { if (sequence === fetchSequence.current && currentQuery.current === queryKey) setLoading(false); }
   }, [date, ticket, filterStatus, page, queryKey]);
-  useEffect(() => { void fetchOrders(); void fetchPending(); const interval = setInterval(() => { if (!historyInFlight.current) void fetchOrders(); void fetchPending(); }, 5000); return () => clearInterval(interval); }, [fetchOrders, fetchPending]);
+  useEffect(() => {
+    const poller = startBrowserPolling(async () => {
+      const results = await Promise.all([fetchOrders(), fetchPending()]);
+      return results.every(result => result === true);
+    });
+    return () => poller.stop();
+  }, [fetchOrders, fetchPending]);
 
   const fetchEditReferences = useCallback(async () => {
     try {
@@ -187,7 +194,7 @@ export default function HistoryPage() {
   const formatTime = (value?: string | null) => value ? new Date(value).toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' }) : '記録なし';
 
   return (
-    <div className="min-h-screen bg-gray-100 p-6 font-sans text-gray-900">
+    <div className="min-h-dvh bg-gray-100 p-6 font-sans text-gray-900">
       
       {settlementTarget && <SettlementModal key={settlementTarget.operation.operationId} {...settlementTarget} onClose={() => { setSettlementTarget(null); void fetchOrders(); void fetchPending(); }} onUpdate={operation => { setSettlementTarget({ ...settlementTarget, operation }); void fetchOrders(); void fetchPending(); }} />}
       <BaseModal isOpen={detailTarget !== null} onClose={() => setDetailTarget(null)} size="xl">
@@ -256,7 +263,7 @@ export default function HistoryPage() {
         </div>}
       </div>
 
-      <div className="bg-white rounded-xl shadow-lg overflow-x-auto">
+      <div className="bg-white rounded-xl shadow-lg overflow-x-auto overflow-y-hidden">
         <table className="min-w-full divide-y divide-gray-200">
           <thead className="bg-gray-50">
             <tr>

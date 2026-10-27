@@ -41,7 +41,7 @@ export default function Signup() {
   };
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen bg-gray-100 p-4 font-sans text-gray-900">
+    <div className="flex flex-col items-center justify-center min-h-dvh bg-gray-100 p-4 font-sans text-gray-900">
       <div className="text-center mb-8">
         <div className="text-4xl font-extrabold text-blue-600 tracking-wider">ROOTINE</div>
         <div className="text-xl font-semibold text-gray-700 mt-2">新規アカウント作成</div>

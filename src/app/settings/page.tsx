@@ -1,6 +1,8 @@
 "use client";
 
-import { useEffect, useState } from 'react';
+import { Toast } from '@/components/common/Toast';
+
+import { useEffect, useRef, useState } from 'react';
 
 const navigateTo = (path: string) => {
   if (typeof window !== 'undefined') window.location.href = path;
@@ -37,6 +39,35 @@ export default function SettingsPage() {
   const [newCustomPrice, setNewCustomPrice] = useState('');
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState('');
+  const [resetPassword, setResetPassword] = useState('');
+  const [resetConfirmed, setResetConfirmed] = useState(false);
+  const [resetting, setResetting] = useState(false);
+  const [resetResult, setResetResult] = useState<{ ok: boolean; message: string } | null>(null);
+  const resetLock = useRef(false);
+
+  const resetTickets = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (resetLock.current || !resetConfirmed || !resetPassword) return;
+    resetLock.current = true;
+    setResetting(true);
+    setResetResult(null);
+    try {
+      const response = await apiFetch('/api/settings/tickets/reset', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: resetPassword, confirm: resetConfirmed }),
+        signal: AbortSignal.timeout(20000),
+      });
+      const data = await response.json();
+      setResetResult({ ok: response.ok, message: data.message || '結果を確認できません。注文画面の整理券番号を確認してください。' });
+    } catch {
+      setResetResult({ ok: false, message: '結果を確認できません。注文画面の整理券番号を確認してください。' });
+    } finally {
+      setResetPassword('');
+      setResetConfirmed(false);
+      setResetting(false);
+      resetLock.current = false;
+    }
+  };
 
   useEffect(() => {
     const checkSession = async () => {
@@ -134,8 +165,8 @@ export default function SettingsPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-100 p-6 font-sans flex flex-col items-center text-gray-900">
-      <div className="w-full max-w-lg bg-white rounded-xl shadow-lg p-8 overflow-y-auto max-h-screen">
+    <div className="min-h-dvh bg-gray-100 p-6 font-sans flex flex-col items-center text-gray-900">
+      <div className="w-full max-w-lg bg-white rounded-xl shadow-lg p-8">
         <h1 className="text-2xl font-bold text-gray-800 mb-6 border-b pb-2">システム設定</h1>
 
         <div className="mb-8">
@@ -209,7 +240,21 @@ export default function SettingsPage() {
           </div>
         </div>
 
-        {message && (
+        <form onSubmit={resetTickets} className="mb-8 rounded-xl border-2 border-red-200 bg-red-50 p-4">
+          <h2 className="mb-2 font-bold text-gray-800">整理券のリセット</h2>
+          <p className="mb-3 text-sm text-gray-700">発券順を先頭に戻します。注文履歴・売上・紛失番号は保持されます。紛失指定の番号は飛ばして発行します。未提供・保留・精算中の注文がある場合は実行できません。締め作業済みの営業は再開されません。</p>
+          <fieldset disabled={resetting}>
+            <label htmlFor="ticket-reset-password" className="block text-sm font-bold">ログイン中のアカウントのパスワード</label>
+            <input id="ticket-reset-password" type="password" autoComplete="current-password" required maxLength={1024} value={resetPassword} onChange={event => setResetPassword(event.target.value)} className="mt-2 w-full rounded-lg border-2 bg-white p-3" />
+            <label className="my-3 flex items-start gap-2 text-sm"><input type="checkbox" checked={resetConfirmed} onChange={event => setResetConfirmed(event.target.checked)} className="mt-1" />整理券の発券順を先頭に戻すことを確認しました</label>
+            <button type="submit" disabled={resetting || !resetConfirmed || !resetPassword} className="w-full rounded-lg bg-red-600 py-3 font-bold text-white disabled:opacity-50">{resetting ? 'リセット中...' : 'パスワードを確認してリセット'}</button>
+          </fieldset>
+          <Toast show={resetResult?.ok === true} message={resetResult?.message || ''} title="リセット完了" onClose={() => setResetResult(null)} />
+          {resetResult && !resetResult.ok && <p role="status" className={`mt-3 text-sm font-bold ${resetResult.ok ? 'text-green-800' : 'text-red-700'}`}>{resetResult.message}</p>}
+        </form>
+
+        <Toast show={Boolean(message) && !message.includes('失敗') && !message.includes('エラー')} message={message} title="保存完了" onClose={() => setMessage('')} />
+        {message && (message.includes('失敗') || message.includes('エラー')) && (
           <div className={`p-4 rounded-lg mb-6 text-center font-bold ${message.includes('失敗') || message.includes('エラー') ? 'bg-red-100 text-red-700 border border-red-200' : 'bg-green-100 text-green-700 border border-green-200'}`}>
             {message}
           </div>

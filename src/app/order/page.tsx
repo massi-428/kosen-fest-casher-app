@@ -12,6 +12,7 @@ import { requestJson, postJson } from '@/lib/client-api';
 import { readDraft, writeDraft, removeDraft, cartChanges, type CartDraft, type OrderQuote } from '@/lib/cart-draft';
 import { Toast } from '@/components/common/Toast';
 import { ShiftReminder } from '@/components/common/ShiftReminder';
+import { startBrowserPolling } from '@/lib/polling';
 
 const navigateTo = (path: string) => {
   if (typeof window !== 'undefined') window.location.href = path;
@@ -125,7 +126,8 @@ export default function OrderPage() {
     const data = await res.json();
     if (!Array.isArray(data)) throw new Error();
     setProducts(data); setProductsReady(true); setCatalogError('');
-    } catch { setProductsReady(false); setCatalogError('商品情報を確認できません。接続回復後に自動で再取得します。'); }
+    return true;
+    } catch { setProductsReady(false); setCatalogError('商品情報を確認できません。接続回復後に自動で再取得します。'); return false; }
   }, []);
 
   const ticketFetchSequence = useRef(0);
@@ -141,7 +143,8 @@ export default function OrderPage() {
       setLastIssuedNumber(data.lastTicketNumber || 0);
       setCurrentPendingItemCount(data.currentPendingItemCount || 0);
       setMaxPendingItemCount(data.maxPendingItemCount || 30);
-    } catch (error) { if (sequence === ticketFetchSequence.current) setTicketError(error instanceof Error ? error.message : '整理券情報の通信エラー'); }
+      return true;
+    } catch (error) { if (sequence === ticketFetchSequence.current) setTicketError(error instanceof Error ? error.message : '整理券情報の通信エラー'); return false; }
   }, []);
 
   const fetchSettings = useCallback(async () => {
@@ -159,25 +162,27 @@ export default function OrderPage() {
       setMaxPendingItemCount(data.maxPendingItemCount || 30);
       setMaxItemsPerOrder(data.maxItemsPerOrder || 10);
       setSettingsReady(true);
+      return true;
     }
     else setSettingsReady(false);
     } catch { setSettingsReady(false); }
+    return false;
   }, []);
 
   const fetchWaitTime = useCallback(async () => {
     try {
     const res = await apiFetch('/api/wait-time', { cache: 'no-store' });
-    if (res.ok) setWaitInfo(await res.json());
+    if (res.ok) { setWaitInfo(await res.json()); return true; }
     } catch { /* Preserve the previous estimate when its response is invalid. */ }
+    return false;
   }, []);
 
   useEffect(() => {
-    fetchProducts();
-    fetchTicketStatus();
-    fetchSettings();
-    fetchWaitTime();
-    const interval = setInterval(() => { fetchProducts(); fetchTicketStatus(); fetchSettings(); fetchWaitTime(); }, 5000);
-    return () => clearInterval(interval);
+    const poller = startBrowserPolling(async () => {
+      const results = await Promise.all([fetchProducts(), fetchTicketStatus(), fetchSettings(), fetchWaitTime()]);
+      return results.every(result => result === true);
+    });
+    return () => poller.stop();
   }, [fetchProducts, fetchTicketStatus, fetchSettings, fetchWaitTime]);
 
   useEffect(() => {

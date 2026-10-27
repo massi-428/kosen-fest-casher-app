@@ -5,6 +5,8 @@ type MongooseCache = {
   conn: typeof mongoose | null;
   promise: Promise<typeof mongoose> | null;
   attachedClients?: WeakSet<object>;
+  failures?: number;
+  retryAfter?: number;
 };
 
 const globalWithMongoose = global as typeof globalThis & {
@@ -32,12 +34,19 @@ async function connectToDatabase() {
     return mongooseCache.conn;
   }
 
+  if (Date.now() < (mongooseCache.retryAfter ?? 0)) {
+    throw new Error('データベース接続の再試行を待っています。少し待って再取得してください。');
+  }
+
   mongooseCache.conn = null;
 
   if (!mongooseCache.promise) {
     const opts = {
       bufferCommands: false,
       serverSelectionTimeoutMS: 15000,
+      connectTimeoutMS: 10000,
+      waitQueueTimeoutMS: 5000,
+      maxConnecting: 1,
       maxPoolSize: 5,
       minPoolSize: 0,
       maxIdleTimeMS: 10000,
@@ -67,8 +76,15 @@ async function connectToDatabase() {
         }
       }
       mongooseCache.conn = connection;
+      mongooseCache.failures = 0;
+      mongooseCache.retryAfter = 0;
       return connection;
-    })().finally(() => {
+    })().catch(error => {
+      const failures = Math.min((mongooseCache.failures ?? 0) + 1, 6);
+      mongooseCache.failures = failures;
+      mongooseCache.retryAfter = Date.now() + Math.min(30000, 1000 * 2 ** (failures - 1));
+      throw error;
+    }).finally(() => {
       mongooseCache.promise = null;
     });
   }

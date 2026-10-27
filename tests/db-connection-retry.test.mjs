@@ -2,7 +2,9 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createLoader } from './support/load-ts.mjs';
 
-test('Atlas connection failure is retryable on the next request', async () => {
+test('Atlas connection failure backs off concurrent retries then recovers', async (t) => {
+  let now = 100000;
+  t.mock.method(Date, 'now', () => now);
   const previousUri = process.env.MONGODB_URI;
   const previousDb = process.env.MONGODB_DB;
   const previousVercel = process.env.VERCEL;
@@ -28,6 +30,10 @@ test('Atlas connection failure is retryable on the next request', async () => {
   try {
     const connect = createLoader({ mongoose: fake })('src/lib/db.ts').default;
     await assert.rejects(connect, /temporary DNS failure/);
+    const rejected = await Promise.allSettled(Array.from({ length: 20 }, () => connect()));
+    assert.ok(rejected.every(result => result.status === 'rejected'));
+    assert.equal(calls, 1, 'cooldown must prevent a connection storm');
+    now += 1000;
     assert.equal(await connect(), fake);
     assert.equal(await connect(), fake);
     assert.equal(calls, 2, 'successful connection should remain cached');
@@ -37,6 +43,10 @@ test('Atlas connection failure is retryable on the next request', async () => {
     assert.equal(lastOptions.maxPoolSize, 5);
     assert.equal(lastOptions.minPoolSize, 0);
     assert.equal(lastOptions.maxIdleTimeMS, 10000);
+    assert.equal(lastOptions.maxConnecting, 1);
+    assert.equal(lastOptions.waitQueueTimeoutMS, 5000);
+    assert.equal(lastOptions.connectTimeoutMS, 10000);
+    assert.equal(globalThis.mongoose.failures, 0);
   } finally {
     if (previousUri === undefined) delete process.env.MONGODB_URI; else process.env.MONGODB_URI = previousUri;
     if (previousDb === undefined) delete process.env.MONGODB_DB; else process.env.MONGODB_DB = previousDb;
@@ -45,7 +55,9 @@ test('Atlas connection failure is retryable on the next request', async () => {
   }
 });
 
-test('replacement waits for old client cleanup, including concurrent recovery and failed retries', async () => {
+test('replacement waits for old client cleanup, including concurrent recovery and failed retries', async (t) => {
+  let now = 100000;
+  t.mock.method(Date, 'now', () => now);
   const previousUri = process.env.MONGODB_URI;
   const previousVercel = process.env.VERCEL;
   const previousCache = globalThis.mongoose;
@@ -118,11 +130,13 @@ test('replacement waits for old client cleanup, including concurrent recovery an
 
     failClose = false;
     failConnect = true;
+    now += 1000;
     await assert.rejects(connect, /reconnect failed/);
     assert.equal(connectCalls, 3);
     assert.equal(globalThis.mongoose.promise, null);
     assert.equal(globalThis.mongoose.conn, null);
     failConnect = false;
+    now += 2000;
     await connect();
     assert.equal(connectCalls, 4);
     assert.equal(liveClients.size, 1, 'failed connection client must also be cleaned up');

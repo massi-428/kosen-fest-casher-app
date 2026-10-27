@@ -1,5 +1,7 @@
 "use client";
 
+import { Toast } from '@/components/common/Toast';
+
 import { useEffect, useState } from 'react';
 
 const navigateTo = (path: string) => {
@@ -49,8 +51,9 @@ export default function PasswordPage() {
       const data = await res.json();
 
       if (res.ok) {
-        alert('パスワードを変更しました。');
-        navigateTo('/settings');
+        setMessage('パスワードを変更しました。');
+        setCurrentPassword('');
+        setNewPassword('');
       } else {
         setMessage(`変更失敗: ${data.message}`);
       }
@@ -62,11 +65,12 @@ export default function PasswordPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-100 p-6 font-sans flex flex-col items-center text-gray-900">
+    <div className="min-h-dvh bg-gray-100 p-6 font-sans flex flex-col items-center text-gray-900">
       <div className="w-full max-w-md bg-white rounded-xl shadow-lg p-8">
         <h1 className="text-2xl font-bold text-gray-800 mb-6 border-b pb-2 text-center">パスワード変更</h1>
 
-        {message && (
+        <Toast show={Boolean(message) && !message.includes('失敗') && !message.includes('エラー')} message={message} title="保存完了" onClose={() => setMessage('')} />
+        {message && (message.includes('失敗') || message.includes('エラー')) && (
           <div className={`p-3 rounded mb-4 text-sm text-center font-bold ${message.includes('失敗') || message.includes('エラー') ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'}`}>
             {message}
           </div>

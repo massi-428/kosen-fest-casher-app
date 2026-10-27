@@ -1,5 +1,7 @@
 "use client";
 
+import { Toast } from '@/components/common/Toast';
+
 import Link from 'next/link';
 import { useCallback, useRef, useState } from 'react';
 import { requestJson, ApiError } from '@/lib/client-api';
@@ -44,7 +46,7 @@ function AttendanceManager({ password, initialData, onLock }: { password: string
     <div className="max-w-5xl mx-auto space-y-3">
       <header className="flex flex-wrap items-center justify-between gap-4"><div><h1 className="text-xl font-black">スタッフ・シフト管理</h1><p className="text-sm text-gray-500 mt-1">スタッフ・個人ID・シフト・打刻履歴（日本時間）</p></div><div className="flex gap-2"><button type="button" onClick={onLock} className={button}>ロック</button><Link href="/attendance" className={button}>勤怠管理へ戻る</Link></div></header>
       {error && <div role="alert" className="bg-red-50 text-red-700 rounded-xl p-2">{error} <button disabled={busy} onClick={() => run(async () => { await refresh(); })} className="underline">再取得</button></div>}
-      {message && <p role="status" className="bg-green-50 text-green-800 rounded-xl p-2">{message}</p>}
+      <Toast show={Boolean(message)} message={message} title="保存完了" onClose={() => setMessage('')} />
       <div className="grid md:grid-cols-2 gap-3">
         <section className="bg-white border rounded-xl p-3 space-y-2">
           <h2 className="text-lg font-bold">スタッフ一括登録</h2><p className="text-sm text-gray-500">1行に1人ずつ氏名を入力、または名簿を貼り付けてください（最大200人）。入力順に、既存IDの続きから自動発行します。空行は無視します。</p>
@@ -89,7 +91,7 @@ function AttendanceManager({ password, initialData, onLock }: { password: string
           void run(async () => { const result = await postJson('/api/attendance', { action: 'deleteShift', personalId: s.personalId, shiftId: s._id }); setMessage(result.message); await refresh(); });
         }}>削除</button></div></li>)}</ul>
       </section>
-      <section className="bg-white border rounded-xl p-3 space-y-2"><h2 className="text-lg font-bold">打刻履歴（最新100件）</h2><div className="overflow-x-auto"><table className="w-full text-left whitespace-nowrap"><thead><tr><th className="p-3">スタッフ</th><th className="p-3">出勤</th><th className="p-3">退勤</th></tr></thead><tbody>{data.records.map(r => <tr key={r._id} className="border-t"><td className="p-3">{r.personalId} · {staffName(r.personalId)}</td><td className="p-3">{attendanceTime(r.clockIn)}</td><td className="p-3">{r.clockOut ? attendanceTime(r.clockOut) : '出勤中'}</td></tr>)}</tbody></table></div>{!data.records.length && <p>打刻履歴はありません。</p>}</section>
+      <section className="bg-white border rounded-xl p-3 space-y-2"><h2 className="text-lg font-bold">打刻履歴（最新100件）</h2><div className="overflow-x-auto overflow-y-hidden"><table className="w-full text-left whitespace-nowrap"><thead><tr><th className="p-3">スタッフ</th><th className="p-3">出勤</th><th className="p-3">退勤</th></tr></thead><tbody>{data.records.map(r => <tr key={r._id} className="border-t"><td className="p-3">{r.personalId} · {staffName(r.personalId)}</td><td className="p-3">{attendanceTime(r.clockIn)}</td><td className="p-3">{r.clockOut ? attendanceTime(r.clockOut) : '出勤中'}</td></tr>)}</tbody></table></div>{!data.records.length && <p>打刻履歴はありません。</p>}</section>
     </div>
   </main>;
 }

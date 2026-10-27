@@ -1,5 +1,7 @@
 "use client";
 
+import { Toast } from '@/components/common/Toast';
+
 import { useEffect, useState } from 'react';
 
 const navigateTo = (path: string) => {
@@ -198,8 +200,8 @@ export default function AdminPage() {
   const usersWithMultipleStores = userRows.filter((row) => row.stores.length > 1 || row.storeIds.length > 1).length;
 
   return (
-    <div className="min-h-screen bg-gray-100 p-6 font-sans flex flex-col items-center text-gray-900">
-      <div className="w-full max-w-5xl bg-white rounded-xl shadow-lg p-8 overflow-y-auto max-h-screen">
+    <div className="min-h-dvh bg-gray-100 p-6 font-sans flex flex-col items-center text-gray-900">
+      <div className="w-full max-w-5xl bg-white rounded-xl shadow-lg p-8">
         <h1 className="text-2xl font-bold text-gray-800 mb-6 border-b pb-2">管理者用設定</h1>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -269,7 +271,8 @@ export default function AdminPage() {
                 {savingPayments ? '保存中...' : '決済方法を保存する'}
               </button>
               </fieldset>
-              {paymentMessage && <p role="status" className="mt-2 text-sm">{paymentMessage}</p>}
+              <Toast show={paymentMessage === '決済方法を保存しました'} message={paymentMessage} title="保存完了" onClose={() => setPaymentMessage('')} />
+              {paymentMessage && paymentMessage !== '決済方法を保存しました' && <p role="status" className="mt-2 text-sm">{paymentMessage}</p>}
             </div>
 
             <button
@@ -363,7 +366,8 @@ export default function AdminPage() {
           </section>
         </div>
 
-        {message && (
+        <Toast show={Boolean(message) && !message.includes('失敗') && !message.includes('エラー')} message={message} title="保存完了" onClose={() => setMessage('')} />
+        {message && (message.includes('失敗') || message.includes('エラー')) && (
           <div className={`p-4 rounded-lg my-6 text-center font-bold ${message.includes('失敗') || message.includes('エラー') ? 'bg-red-100 text-red-700 border border-red-200' : 'bg-green-100 text-green-700 border border-green-200'}`}>
             {message}
           </div>

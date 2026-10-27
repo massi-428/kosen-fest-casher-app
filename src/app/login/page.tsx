@@ -42,7 +42,7 @@ export default function Login() {
   };
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen bg-gray-100 p-4 font-sans text-gray-900">
+    <div className="flex flex-col items-center justify-center min-h-dvh bg-gray-100 p-4 font-sans text-gray-900">
       <RootineLogo className="text-5xl font-extrabold text-[#f3b928] mb-8 drop-shadow-sm tracking-wider" />
       <form onSubmit={handleSubmit} className="bg-white p-8 rounded-xl shadow-2xl w-full max-w-sm space-y-4">
         {error && <div className="bg-red-100 text-red-700 px-4 py-2 rounded text-sm">{error}</div>}
