@@ -4,6 +4,7 @@ import React, { useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 
 type ToastProps = {
+  legacyAppearance?: boolean;
   show: boolean;
   message: string;
   title?: string;
@@ -11,7 +12,7 @@ type ToastProps = {
   onClose: () => void;
 };
 
-export const Toast = ({ show, message, title, type = 'success', onClose }: ToastProps) => {
+export const Toast = ({ show, message, title, type = 'success', onClose, legacyAppearance = false }: ToastProps) => {
   const closeRef = useRef(onClose);
   useEffect(() => { closeRef.current = onClose; }, [onClose]);
   useEffect(() => {
@@ -40,7 +41,7 @@ export const Toast = ({ show, message, title, type = 'success', onClose }: Toast
           <p className="font-bold text-sm">{title || (type === 'success' ? '完了' : 'エラー')}</p>
           <p className="text-gray-600 text-sm whitespace-pre-wrap break-words">{message}</p>
         </div>
-        <button type="button" aria-label="通知を閉じる" onClick={onClose} className="ui-button ui-button--secondary shrink-0 p-2">
+        <button type="button" aria-label="通知を閉じる" onClick={onClose} className={legacyAppearance ? 'shrink-0 text-gray-400 hover:text-gray-600 p-2' : 'ui-button ui-button--secondary shrink-0 p-2'}>
           ✕
         </button>
       </div>

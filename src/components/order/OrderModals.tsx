@@ -10,6 +10,7 @@ export type CustomOption = {
 };
 
 type ResultModalProps = {
+  legacyAppearance?: boolean;
   isOpen: boolean;
   title: string;
   message: string;
@@ -18,6 +19,7 @@ type ResultModalProps = {
 };
 
 type ConfirmModalProps = {
+  legacyAppearance?: boolean;
   isOpen: boolean;
   message: string;
   onConfirm: () => void;
@@ -27,6 +29,7 @@ type ConfirmModalProps = {
 };
 
 type DetailModalProps = {
+  legacyAppearance?: boolean;
   isOpen: boolean;
   productName: string;
   currentDetail?: string;
@@ -37,6 +40,7 @@ type DetailModalProps = {
 };
 
 type PaymentModalProps = {
+  legacyAppearance?: boolean;
   isOpen: boolean;
   paymentMethods: string[];
   totalAmount: number;
@@ -47,6 +51,7 @@ type PaymentModalProps = {
 };
 
 type LostTicketModalProps = {
+  legacyAppearance?: boolean;
   isOpen: boolean;
   maxTicketNumber: number;
   lostTickets: number[];
@@ -54,38 +59,38 @@ type LostTicketModalProps = {
   onClose: () => void;
 };
 
-export const ResultModal = ({ isOpen, title, message, type, onClose }: ResultModalProps) => type === 'success' ? (
-  <Toast show={isOpen} title={title} message={message} onClose={onClose} />
+export const ResultModal = ({ legacyAppearance = false, isOpen, title, message, type, onClose }: ResultModalProps) => type === 'success' ? (
+  <Toast legacyAppearance={legacyAppearance} show={isOpen} title={title} message={message} onClose={onClose} />
 ) : (
-  <BaseModal isOpen={isOpen} onClose={onClose}>
+  <BaseModal legacyAppearance={legacyAppearance} isOpen={isOpen} onClose={onClose}>
     <div className="text-center mb-4 text-4xl text-red-500">
       !
     </div>
     <h3 className="text-xl font-bold text-gray-800 text-center mb-2">{title}</h3>
     <p className="text-gray-600 text-center mb-6 whitespace-pre-wrap">{message}</p>
-    <button onClick={onClose} className="ui-button ui-button--primary w-full py-4">
+    <button onClick={onClose} className={legacyAppearance ? ("w-full py-4 bg-[#f3b928] text-gray-900 rounded-xl font-bold hover:bg-[#d6a11b] transition shadow-lg") : ("ui-button ui-button--primary w-full py-4")}>
       閉じる
     </button>
   </BaseModal>
 );
 
-export const ConfirmModal = ({ isOpen, message, onConfirm, onCancel, confirmLabel = '実行する', cancelLabel = '戻る' }: ConfirmModalProps) => (
-  <BaseModal isOpen={isOpen} onClose={onCancel}>
+export const ConfirmModal = ({ legacyAppearance = false, isOpen, message, onConfirm, onCancel, confirmLabel = '実行する', cancelLabel = '戻る' }: ConfirmModalProps) => (
+  <BaseModal legacyAppearance={legacyAppearance} isOpen={isOpen} onClose={onCancel}>
     <div className="text-center mb-4 text-4xl text-yellow-500">?</div>
     <h3 className="text-xl font-bold text-gray-800 text-center mb-4">確認</h3>
     <p className="text-gray-600 text-center mb-6 whitespace-pre-wrap font-medium">{message}</p>
     <div className="flex gap-3 mt-6">
-      <button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); onCancel(); }} className="ui-button ui-button--secondary flex-1 py-3">
+      <button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); onCancel(); }} className={legacyAppearance ? ("flex-1 py-3 bg-gray-100 text-gray-700 rounded-xl font-bold hover:bg-gray-200 transition") : ("ui-button ui-button--secondary flex-1 py-3")}>
         {cancelLabel}
       </button>
-      <button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); onConfirm(); }} className="ui-button ui-button--primary flex-1 py-3">
+      <button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); onConfirm(); }} className={legacyAppearance ? ("flex-1 py-3 bg-[#f3b928] text-gray-900 rounded-xl font-bold hover:bg-[#d6a11b] transition shadow-md") : ("ui-button ui-button--primary flex-1 py-3")}>
         {confirmLabel}
       </button>
     </div>
   </BaseModal>
 );
 
-export const DetailModal = ({ isOpen, productName, currentDetail, currentOptions, optionsList, onSave, onClose }: DetailModalProps) => {
+export const DetailModal = ({ legacyAppearance = false, isOpen, productName, currentDetail, currentOptions, optionsList, onSave, onClose }: DetailModalProps) => {
   const [noteVal, setNoteVal] = useState("");
   const [selectedOpts, setSelectedOpts] = useState<CustomOption[]>([]);
 
@@ -102,7 +107,7 @@ export const DetailModal = ({ isOpen, productName, currentDetail, currentOptions
   };
 
   return (
-    <BaseModal isOpen={isOpen} onClose={onClose}>
+    <BaseModal legacyAppearance={legacyAppearance} isOpen={isOpen} onClose={onClose}>
       <h3 className="text-lg font-bold text-gray-800 mb-4 border-b pb-2">商品オプション・メモ: {productName}</h3>
       <div className="mb-6">
         <p className="text-xs text-gray-500 mb-3 font-bold uppercase tracking-wider">オプション</p>
@@ -141,14 +146,14 @@ export const DetailModal = ({ isOpen, productName, currentDetail, currentOptions
         />
       </div>
       <div className="flex gap-3">
-        <button onClick={onClose} className="ui-button ui-button--secondary flex-1 py-3">変更せずに戻る</button>
-        <button onClick={() => onSave(noteVal, selectedOpts)} className="ui-button ui-button--primary flex-1 py-3">保存</button>
+        <button onClick={onClose} className={legacyAppearance ? ("flex-1 py-3 bg-gray-100 text-gray-600 rounded-xl font-bold hover:bg-gray-200 transition") : ("ui-button ui-button--secondary flex-1 py-3")}>変更せずに戻る</button>
+        <button onClick={() => onSave(noteVal, selectedOpts)} className={legacyAppearance ? ("flex-1 py-3 bg-[#f3b928] text-gray-900 rounded-xl font-bold hover:bg-[#d6a11b] transition shadow-lg") : ("ui-button ui-button--primary flex-1 py-3")}>保存</button>
       </div>
     </BaseModal>
   );
 };
 
-export const PaymentModal = ({ isOpen, paymentMethods, totalAmount, cashCalculationEnabled, cashPaymentMethod, onConfirm, onCancel }: PaymentModalProps) => {
+export const PaymentModal = ({ legacyAppearance = false, isOpen, paymentMethods, totalAmount, cashCalculationEnabled, cashPaymentMethod, onConfirm, onCancel }: PaymentModalProps) => {
   const [selected, setSelected] = useState("");
   const [receivedAmount, setReceivedAmount] = useState("");
 
@@ -167,7 +172,7 @@ export const PaymentModal = ({ isOpen, paymentMethods, totalAmount, cashCalculat
   const changeAmount = canConfirmCash ? received - totalAmount : 0;
 
   return (
-    <BaseModal isOpen={isOpen} onClose={onCancel} closeOnOverlayClick={false}>
+    <BaseModal legacyAppearance={legacyAppearance} isOpen={isOpen} onClose={onCancel} closeOnOverlayClick={false}>
       <h3 className="text-xl font-bold text-gray-800 text-center mb-1">お支払い</h3>
       <p className="text-center text-gray-400 text-sm mb-4 font-bold uppercase tracking-widest">支払い方法を選択してください</p>
       <div className="bg-[#fff8e1] p-4 rounded-2xl mb-6 text-center">
@@ -205,7 +210,7 @@ export const PaymentModal = ({ isOpen, paymentMethods, totalAmount, cashCalculat
               className="mt-2 w-full rounded-xl border-2 border-amber-300 bg-white p-3 text-right text-2xl font-black outline-none focus:ring-2 focus:ring-[#f3b928]"
             />
           </label>
-          <button type="button" onClick={() => setReceivedAmount(String(totalAmount))} className="ui-button ui-button--secondary mt-2 w-full py-2 text-sm">ちょうど預かる</button>
+          <button type="button" onClick={() => setReceivedAmount(String(totalAmount))} className={legacyAppearance ? ("mt-2 w-full rounded-lg bg-white py-2 text-sm font-bold text-gray-700 border border-amber-200 hover:bg-amber-100") : ("ui-button ui-button--secondary mt-2 w-full py-2 text-sm")}>ちょうど預かる</button>
           <div className="mt-4 flex items-center justify-between border-t border-amber-200 pt-4">
             <span className="font-bold text-gray-600">お釣り</span>
             <span className={`text-3xl font-black font-mono ${canConfirmCash ? 'text-green-700' : 'text-gray-400'}`}>¥{changeAmount.toLocaleString()}</span>
@@ -214,11 +219,11 @@ export const PaymentModal = ({ isOpen, paymentMethods, totalAmount, cashCalculat
         </div>
       )}
       <div className="flex gap-3">
-        <button onClick={onCancel} className="ui-button ui-button--secondary flex-1 py-4">戻る</button>
+        <button onClick={onCancel} className={legacyAppearance ? ("flex-1 py-4 bg-gray-100 text-gray-500 rounded-xl font-bold hover:bg-gray-200 transition") : ("ui-button ui-button--secondary flex-1 py-4")}>戻る</button>
         <button
           onClick={() => onConfirm(selected, usesCashCalculation ? received : undefined)}
           disabled={!selected || (usesCashCalculation && !canConfirmCash)}
-          className="ui-button ui-button--primary flex-[2] py-4 text-lg"
+          className={legacyAppearance ? (`flex-[2] py-4 text-white rounded-xl font-black text-xl transition-all shadow-lg ${selected && (!usesCashCalculation || canConfirmCash) ? 'bg-green-500 hover:bg-green-600 text-white' : 'bg-gray-300 cursor-not-allowed text-white'}`) : ("ui-button ui-button--primary flex-[2] py-4 text-lg")}
         >
           注文を確定
         </button>
@@ -227,8 +232,8 @@ export const PaymentModal = ({ isOpen, paymentMethods, totalAmount, cashCalculat
   );
 };
 
-export const LostTicketModal = ({ isOpen, maxTicketNumber, lostTickets, onToggle, onClose }: LostTicketModalProps) => (
-  <BaseModal isOpen={isOpen} onClose={onClose}>
+export const LostTicketModal = ({ legacyAppearance = false, isOpen, maxTicketNumber, lostTickets, onToggle, onClose }: LostTicketModalProps) => (
+  <BaseModal legacyAppearance={legacyAppearance} isOpen={isOpen} onClose={onClose}>
     <h3 className="text-lg font-bold text-gray-800 mb-2">紛失した整理券</h3>
     <p className="text-xs text-gray-500 mb-4">紛失した番号を押すと赤くなり、その番号は発券されなくなります。見つかったら、もう一度押して解除してください。</p>
     <div className="grid grid-cols-5 gap-2 max-h-64 overflow-y-auto p-2 mb-4 bg-gray-50 rounded-lg border-2">
@@ -245,7 +250,7 @@ export const LostTicketModal = ({ isOpen, maxTicketNumber, lostTickets, onToggle
         );
       })}
     </div>
-    <button onClick={onClose} className="ui-button ui-button--primary w-full py-3">
+    <button onClick={onClose} className={legacyAppearance ? ("w-full py-3 bg-[#f3b928] text-gray-900 rounded-lg font-bold hover:bg-[#d6a11b] transition") : ("ui-button ui-button--primary w-full py-3")}>
       閉じる
     </button>
   </BaseModal>

@@ -3,6 +3,7 @@
 import { useEffect, ReactNode } from 'react';
 
 type BaseModalProps = {
+  legacyAppearance?: boolean;
   isOpen: boolean;
   onClose: () => void;
   children: ReactNode;
@@ -10,7 +11,7 @@ type BaseModalProps = {
   size?: 'md' | 'xl';
 };
 
-export const BaseModal = ({ isOpen, onClose, children, closeOnOverlayClick = true, size = 'md' }: BaseModalProps) => {
+export const BaseModal = ({ isOpen, onClose, children, closeOnOverlayClick = true, size = 'md', legacyAppearance = false }: BaseModalProps) => {
   // ESCキーで閉じる機能
   useEffect(() => {
     const handleEsc = (e: KeyboardEvent) => {
@@ -38,7 +39,7 @@ export const BaseModal = ({ isOpen, onClose, children, closeOnOverlayClick = tru
         role="dialog"
         aria-modal="true"
         aria-label="操作の確認"
-        className={`bg-white rounded-2xl border border-gray-200 shadow-xl p-5 sm:p-6 w-full ${size === 'xl' ? 'max-w-4xl' : 'max-w-md'} max-h-[90dvh] overflow-y-auto leading-relaxed`}
+        className={legacyAppearance ? `bg-white rounded-2xl shadow-2xl p-6 w-full ${size === 'xl' ? 'max-w-4xl' : 'max-w-md'} max-h-[90vh] overflow-y-auto transform transition-all animate-bounceIn` : `bg-white rounded-2xl border border-gray-200 shadow-xl p-5 sm:p-6 w-full ${size === 'xl' ? 'max-w-4xl' : 'max-w-md'} max-h-[90dvh] overflow-y-auto leading-relaxed`}
         onClick={(e) => e.stopPropagation()} 
       >
         {children}

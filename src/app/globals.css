@@ -56,11 +56,11 @@ body {
   .ui-steps .is-current span { background: #f3b928; }
 }
 
-button:not(:disabled), summary { cursor: pointer; }
-button:disabled, fieldset:disabled button { cursor: not-allowed; opacity: .5; }
-:where(button, a, input, select, textarea, summary):focus-visible { outline: 3px solid #2563eb; outline-offset: 3px; }
-:where(input:not([type="checkbox"]):not([type="radio"]), select, textarea) { border-color: #d1d5db; border-radius: .75rem; }
-input[type="checkbox"], input[type="radio"] { accent-color: #a16207; width: 1.1rem; height: 1.1rem; flex-shrink: 0; }
+:where(body:not(:has(.pos-screen))) button:not(:disabled), :where(body:not(:has(.pos-screen))) summary { cursor: pointer; }
+:where(body:not(:has(.pos-screen))) button:disabled, :where(body:not(:has(.pos-screen))) fieldset:disabled button { cursor: not-allowed; opacity: .5; }
+:where(body:not(:has(.pos-screen))) :where(button, a, input, select, textarea, summary):focus-visible { outline: 3px solid #2563eb; outline-offset: 3px; }
+:where(body:not(:has(.pos-screen))) :where(input:not([type="checkbox"]):not([type="radio"]), select, textarea) { border-color: #d1d5db; border-radius: .75rem; }
+:where(body:not(:has(.pos-screen))) input[type="checkbox"], :where(body:not(:has(.pos-screen))) input[type="radio"] { accent-color: #a16207; width: 1.1rem; height: 1.1rem; flex-shrink: 0; }
 
 /* Lock the document on POS, KDS and attendance screens. Inner content still scrolls. */
 html:has(.terminal-screen),
