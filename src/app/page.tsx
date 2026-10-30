@@ -27,13 +27,13 @@ export default function Home() {
       {/* タイトルテキスト */}
       <RootineLogo className="text-8xl text-gray-800 px-3 py-2 mb-8 tracking-tighter" />
       
-      <p className="text-gray-600 mb-6 font-bold">注文・調理・売上・勤怠を、このアプリで管理できます。</p>
+      <p className="text-gray-600 mb-6 font-bold">「ログインページへ」ボタンを押すと、ログインページに移動します。</p>
 
       <button 
         className="ui-button ui-button--primary px-10 py-4 duration-300 text-lg"
         onClick={goToLogin} 
       >
-        ログインする
+        ログインページへ
       </button>
     </div>
   );
