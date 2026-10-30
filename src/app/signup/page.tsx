@@ -34,7 +34,7 @@ export default function Signup() {
         setError(data.message + (data.error ? ` (${data.error})` : ""));
       }
     } catch {
-      setError("通信エラーが発生しました。サーバーが起動しているか確認してください。");
+      setError("通信エラーが発生しました。接続を確認して、もう一度お試しください。");
     } finally {
       setLoading(false);
     }
@@ -43,7 +43,7 @@ export default function Signup() {
   return (
     <div className="flex flex-col items-center justify-center min-h-dvh bg-gray-100 p-4 font-sans text-gray-900">
       <div className="text-center mb-8">
-        <div className="text-4xl font-extrabold text-blue-600 tracking-wider">ROOTINE</div>
+        <div className="text-4xl font-extrabold text-[#f3b928] tracking-wider">ROOTINE</div>
         <div className="text-xl font-semibold text-gray-700 mt-2">新規アカウント作成</div>
       </div>
 
@@ -79,16 +79,14 @@ export default function Signup() {
         <button 
           type="submit" 
           disabled={loading} 
-          className={`mt-8 w-full text-white py-3 rounded-lg font-bold shadow-md transition transform active:scale-95 ${
-            loading ? 'bg-gray-400 cursor-not-allowed' : 'bg-green-600 hover:bg-green-700'
-          }`}
+          className="ui-button ui-button--primary mt-8 w-full"
         >
           {loading ? '作成中...' : 'アカウント作成'}
         </button>
 
         <div className="mt-6 text-center">
           <a href="/login" className="text-sm text-blue-600 hover:text-blue-800 hover:underline font-medium">
-            すでにアカウントをお持ちの方はこちら
+            ログイン画面に戻る
           </a>
         </div>
       </form>

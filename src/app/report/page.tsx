@@ -135,7 +135,7 @@ export default function ReportPage() {
       .sort((a, b) => b.amount - a.amount);
   }, [orders]);
 
-  // 3. 決済方法別集計
+  // 3. 支払い方法別集計
   const paymentSummary = useMemo(() => {
     const summary: { [key: string]: { count: number; amount: number } } = {};
 
@@ -166,7 +166,7 @@ export default function ReportPage() {
   
   const maxHourlySales = Math.max(...hourlySales, 1);
 
-  // 5. 別注オプション別集計
+  // 5. オプション別集計
   const optionSummary = useMemo(() => {
     const summary: { [key: string]: { count: number; amount: number } } = {};
 
@@ -216,7 +216,7 @@ export default function ReportPage() {
     };
     const statusLabel = (status?: string) => ({ active: '調理中', pending: '保留中', completed: '完了', cancelled: 'キャンセル' }[status || ''] || status || '');
     const rows = [
-      ['注文日時', '整理番号', '状態', '売上扱い', '支払方法', '商品名', '数量', '商品金額', 'オプション', '商品メモ', '注文合計', '預かり金', 'お釣り', '注文備考', '売上計上額（明細）', '差額精算履歴（参考・加算不要）'],
+      ['注文日時', '整理券番号', '状態', '売上扱い', '支払い方法', '商品名', '数量', '商品金額', 'オプション', '商品メモ', '注文合計', '預かり金', 'お釣り', '注文備考', '売上計上額（明細）', '追加支払い・返金履歴（参考・加算不要）'],
       ...exportedOrders.flatMap((order) => order.items.map((item) => [
         new Date(order.createdAt).toLocaleString('ja-JP'),
         order.ticketNumber,
@@ -233,7 +233,7 @@ export default function ReportPage() {
         order.changeAmount ?? '',
         order.note || '',
         isSalesOrder(order) ? item.amount : 0,
-        (order.settlements || []).map(entry => new Date(entry.createdAt).toLocaleString('ja-JP') + ' ' + (entry.kind === 'cancel' ? '全取消' : '差額精算') + ' ' + entry.delta + '円 ' + entry.paymentMethod + (entry.receivedAmount != null ? ' 預り' + entry.receivedAmount + ' 釣銭' + entry.changeAmount : '')).join(' / '),
+        (order.settlements || []).map(entry => new Date(entry.createdAt).toLocaleString('ja-JP') + ' ' + (entry.kind === 'cancel' ? '注文キャンセル' : '追加支払い・返金') + ' ' + entry.delta + '円 ' + entry.paymentMethod + (entry.receivedAmount != null ? ' お預かり' + entry.receivedAmount + ' お釣り' + entry.changeAmount : '')).join(' / '),
       ])),
     ];
     const csv = `\uFEFF${rows.map((row) => row.map(escapeCell).join(',')).join('\r\n')}`;
@@ -252,22 +252,22 @@ export default function ReportPage() {
       {/* ヘッダー */}
       <div className="flex justify-between items-center mb-8 bg-white p-4 rounded-xl shadow-sm">
         <h1 className="text-2xl font-bold text-gray-800 flex items-center gap-2">
-            営業日報
+            売上・営業終了
         </h1>
         <button 
           onClick={() => router.push('/order')}
-          className="text-gray-600 hover:text-gray-900 font-bold px-4 py-2 bg-gray-200 rounded-lg transition"
+          className="ui-button ui-button--secondary px-4 py-2"
         >
           ← 注文画面へ戻る
         </button>
       </div>
 
-      {date === getTodayString() ? <BusinessDayPanel /> : <button className="mb-6 rounded bg-amber-200 p-3 font-bold" onClick={() => setDate(getTodayString())}>本日の日報・〆作業へ戻る</button>}
+      {date === getTodayString() ? <BusinessDayPanel /> : <button className="ui-button ui-button--secondary mb-6 p-3" onClick={() => setDate(getTodayString())}>本日の売上・営業終了へ戻る</button>}
       {/* 日付選択エリア */}
       <div className="flex justify-center items-center gap-4 mb-8">
         <button 
           onClick={() => changeDate(-1)}
-          className="bg-white px-4 py-2 rounded-lg shadow text-gray-600 hover:bg-gray-50 font-bold"
+          className="ui-button ui-button--secondary px-4 py-2"
         >
           ◀ 前日
         </button>
@@ -279,20 +279,20 @@ export default function ReportPage() {
         />
         <button 
           onClick={() => changeDate(1)}
-          className="bg-white px-4 py-2 rounded-lg shadow text-gray-600 hover:bg-gray-50 font-bold"
+          className="ui-button ui-button--secondary px-4 py-2"
         >
           翌日 ▶
         </button>
-        <button onClick={() => void exportCsv()} disabled={isExporting} className="rounded-lg bg-green-600 px-4 py-2 font-bold text-white shadow hover:bg-green-700 disabled:cursor-not-allowed disabled:bg-gray-300">{isExporting ? '出力中...' : '全注文CSV'}</button>
+        <button onClick={() => void exportCsv()} disabled={isExporting} className="ui-button ui-button--primary px-4 py-2 disabled:cursor-not-allowed">{isExporting ? '出力中...' : '注文一覧をCSVで保存'}</button>
       </div>
 
       <div role="status" className="mb-5 rounded-xl bg-white p-4">
-        <p>売上対象: 会計済みの調理中・保留中・完了注文（キャンセルは対象外）。注文受付日（日本時間）に変更後の金額を計上します。差額精算履歴は参考記録で、売上に再加算しません。</p>
+        <p>売上には、支払い済みの注文を含めます。キャンセル済みの注文は含めません。注文内容を変更した場合は、変更後の金額を注文した日の売上に反映します。追加支払い・返金の履歴を、売上に重ねて足す必要はありません。</p>
         <p>最終更新: {lastUpdated || '未取得'} {loadedDate && '（取得済みの日付: ' + loadedDate + '）'}</p>
         {loading && <p>読み込み中…</p>}
         {error && <p className="font-bold text-red-600">{error} {loadedDate ? '最後に取得できたデータを保持しています。' : '売上は未取得です。'}</p>}
         {loadedDate && loadedDate !== date && <p className="font-bold text-orange-700">選択日の日報は未取得です。以下は {loadedDate} のデータです。</p>}
-        <button onClick={() => void fetchReport(date)} disabled={loading} className="mt-2 rounded bg-blue-50 p-2 text-blue-700">再取得・再試行</button>
+        <button onClick={() => void fetchReport(date)} disabled={loading} className="ui-button ui-button--secondary mt-2 p-2">もう一度読み込む</button>
       </div>
       {loadedDate && <>
       {/* サマリーカード */}
@@ -302,11 +302,11 @@ export default function ReportPage() {
           <p className="text-4xl font-black text-gray-800">¥{summary.totalSales.toLocaleString()}</p>
         </div>
         <div className="bg-white p-6 rounded-xl shadow border-l-8 border-green-500">
-          <p className="text-sm text-gray-500 font-bold mb-1">総客数 (注文数)</p>
-          <p className="text-4xl font-black text-gray-800">{summary.totalCustomers}<span className="text-lg font-normal ml-1">組</span></p>
+          <p className="text-sm text-gray-500 font-bold mb-1">注文数</p>
+          <p className="text-4xl font-black text-gray-800">{summary.totalCustomers}<span className="text-lg font-normal ml-1">件</span></p>
         </div>
         <div className="bg-white p-6 rounded-xl shadow border-l-8 border-orange-500">
-          <p className="text-sm text-gray-500 font-bold mb-1">平均客単価</p>
+          <p className="text-sm text-gray-500 font-bold mb-1">1注文あたりの平均金額</p>
           <p className="text-4xl font-black text-gray-800">¥{summary.averageSales.toLocaleString()}</p>
         </div>
       </div>
@@ -328,7 +328,7 @@ export default function ReportPage() {
               </thead>
               <tbody className="text-gray-700">
                 {productSummary.length === 0 ? (
-                  <tr><td colSpan={4} className="text-center py-4 text-gray-400">データなし</td></tr>
+                  <tr><td colSpan={4} className="text-center py-4 text-gray-400">この日の対象データはありません</td></tr>
                 ) : (
                   productSummary.map((item, index) => (
                     <tr key={item.name} className="border-t border-gray-100">
@@ -345,12 +345,12 @@ export default function ReportPage() {
         </div>
 
         <div className="space-y-6">
-          {/* 決済方法別 */}
+          {/* 支払い方法別 */}
           <div className="bg-white p-6 rounded-xl shadow">
-            <h2 className="text-xl font-bold text-gray-700 mb-4 border-b pb-2">決済方法別</h2>
+            <h2 className="text-xl font-bold text-gray-700 mb-4 border-b pb-2">支払い方法別</h2>
             <div className="space-y-3">
               {paymentSummary.length === 0 ? (
-                <p className="text-center text-gray-400 py-4">データなし</p>
+                <p className="text-center text-gray-400 py-4">この日の対象データはありません</p>
               ) : (
                 paymentSummary.map((item) => (
                   <div key={item.name} className="flex justify-between items-center">
@@ -386,14 +386,14 @@ export default function ReportPage() {
         </div>
       </div>
 
-      {/* 別注オプション実績 */}
+      {/* オプション実績 */}
       <div className="bg-white p-6 rounded-xl shadow">
         <h2 className="text-xl font-bold text-[#d6a11b] mb-4 border-b pb-2 flex items-center gap-2">
-          別注オプション実績
+          オプション実績
         </h2>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {optionSummary.length === 0 ? (
-            <p className="text-gray-400 col-span-3 py-4 text-center">別注オプションの利用はありません</p>
+            <p className="text-gray-400 col-span-3 py-4 text-center">オプションの利用はありません</p>
           ) : (
             optionSummary.map((item) => (
               <div 

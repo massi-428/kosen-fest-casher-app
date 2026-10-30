@@ -63,22 +63,22 @@ export const ResultModal = ({ isOpen, title, message, type, onClose }: ResultMod
     </div>
     <h3 className="text-xl font-bold text-gray-800 text-center mb-2">{title}</h3>
     <p className="text-gray-600 text-center mb-6 whitespace-pre-wrap">{message}</p>
-    <button onClick={onClose} className="w-full py-4 bg-[#f3b928] text-gray-900 rounded-xl font-bold hover:bg-[#d6a11b] transition shadow-lg">
+    <button onClick={onClose} className="ui-button ui-button--primary w-full py-4">
       閉じる
     </button>
   </BaseModal>
 );
 
-export const ConfirmModal = ({ isOpen, message, onConfirm, onCancel, confirmLabel = '実行する', cancelLabel = 'キャンセル' }: ConfirmModalProps) => (
+export const ConfirmModal = ({ isOpen, message, onConfirm, onCancel, confirmLabel = '実行する', cancelLabel = '戻る' }: ConfirmModalProps) => (
   <BaseModal isOpen={isOpen} onClose={onCancel}>
     <div className="text-center mb-4 text-4xl text-yellow-500">?</div>
     <h3 className="text-xl font-bold text-gray-800 text-center mb-4">確認</h3>
     <p className="text-gray-600 text-center mb-6 whitespace-pre-wrap font-medium">{message}</p>
     <div className="flex gap-3 mt-6">
-      <button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); onCancel(); }} className="flex-1 py-3 bg-gray-100 text-gray-700 rounded-xl font-bold hover:bg-gray-200 transition">
+      <button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); onCancel(); }} className="ui-button ui-button--secondary flex-1 py-3">
         {cancelLabel}
       </button>
-      <button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); onConfirm(); }} className="flex-1 py-3 bg-[#f3b928] text-gray-900 rounded-xl font-bold hover:bg-[#d6a11b] transition shadow-md">
+      <button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); onConfirm(); }} className="ui-button ui-button--primary flex-1 py-3">
         {confirmLabel}
       </button>
     </div>
@@ -103,7 +103,7 @@ export const DetailModal = ({ isOpen, productName, currentDetail, currentOptions
 
   return (
     <BaseModal isOpen={isOpen} onClose={onClose}>
-      <h3 className="text-lg font-bold text-gray-800 mb-4 border-b pb-2">詳細設定: {productName}</h3>
+      <h3 className="text-lg font-bold text-gray-800 mb-4 border-b pb-2">商品オプション・メモ: {productName}</h3>
       <div className="mb-6">
         <p className="text-xs text-gray-500 mb-3 font-bold uppercase tracking-wider">オプション</p>
         <div className="flex flex-wrap gap-2">
@@ -141,8 +141,8 @@ export const DetailModal = ({ isOpen, productName, currentDetail, currentOptions
         />
       </div>
       <div className="flex gap-3">
-        <button onClick={onClose} className="flex-1 py-3 bg-gray-100 text-gray-600 rounded-xl font-bold hover:bg-gray-200 transition">キャンセル</button>
-        <button onClick={() => onSave(noteVal, selectedOpts)} className="flex-1 py-3 bg-[#f3b928] text-gray-900 rounded-xl font-bold hover:bg-[#d6a11b] transition shadow-lg">保存</button>
+        <button onClick={onClose} className="ui-button ui-button--secondary flex-1 py-3">変更せずに戻る</button>
+        <button onClick={() => onSave(noteVal, selectedOpts)} className="ui-button ui-button--primary flex-1 py-3">保存</button>
       </div>
     </BaseModal>
   );
@@ -169,7 +169,7 @@ export const PaymentModal = ({ isOpen, paymentMethods, totalAmount, cashCalculat
   return (
     <BaseModal isOpen={isOpen} onClose={onCancel} closeOnOverlayClick={false}>
       <h3 className="text-xl font-bold text-gray-800 text-center mb-1">お支払い</h3>
-      <p className="text-center text-gray-400 text-sm mb-4 font-bold uppercase tracking-widest">決済方法を選択してください</p>
+      <p className="text-center text-gray-400 text-sm mb-4 font-bold uppercase tracking-widest">支払い方法を選択してください</p>
       <div className="bg-[#fff8e1] p-4 rounded-2xl mb-6 text-center">
         <span className="text-gray-500 text-sm block font-bold mb-1">合計金額</span>
         <span className="text-4xl font-black text-[#d6a11b] font-mono">¥{totalAmount.toLocaleString()}</span>
@@ -205,7 +205,7 @@ export const PaymentModal = ({ isOpen, paymentMethods, totalAmount, cashCalculat
               className="mt-2 w-full rounded-xl border-2 border-amber-300 bg-white p-3 text-right text-2xl font-black outline-none focus:ring-2 focus:ring-[#f3b928]"
             />
           </label>
-          <button type="button" onClick={() => setReceivedAmount(String(totalAmount))} className="mt-2 w-full rounded-lg bg-white py-2 text-sm font-bold text-gray-700 border border-amber-200 hover:bg-amber-100">ちょうど預かる</button>
+          <button type="button" onClick={() => setReceivedAmount(String(totalAmount))} className="ui-button ui-button--secondary mt-2 w-full py-2 text-sm">ちょうど預かる</button>
           <div className="mt-4 flex items-center justify-between border-t border-amber-200 pt-4">
             <span className="font-bold text-gray-600">お釣り</span>
             <span className={`text-3xl font-black font-mono ${canConfirmCash ? 'text-green-700' : 'text-gray-400'}`}>¥{changeAmount.toLocaleString()}</span>
@@ -214,11 +214,11 @@ export const PaymentModal = ({ isOpen, paymentMethods, totalAmount, cashCalculat
         </div>
       )}
       <div className="flex gap-3">
-        <button onClick={onCancel} className="flex-1 py-4 bg-gray-100 text-gray-500 rounded-xl font-bold hover:bg-gray-200 transition">戻る</button>
+        <button onClick={onCancel} className="ui-button ui-button--secondary flex-1 py-4">戻る</button>
         <button
           onClick={() => onConfirm(selected, usesCashCalculation ? received : undefined)}
           disabled={!selected || (usesCashCalculation && !canConfirmCash)}
-          className={`flex-[2] py-4 text-white rounded-xl font-black text-xl transition-all shadow-lg ${selected && (!usesCashCalculation || canConfirmCash) ? 'bg-green-500 hover:bg-green-600 text-white' : 'bg-gray-300 cursor-not-allowed text-white'}`}
+          className="ui-button ui-button--primary flex-[2] py-4 text-lg"
         >
           注文を確定
         </button>
@@ -229,8 +229,8 @@ export const PaymentModal = ({ isOpen, paymentMethods, totalAmount, cashCalculat
 
 export const LostTicketModal = ({ isOpen, maxTicketNumber, lostTickets, onToggle, onClose }: LostTicketModalProps) => (
   <BaseModal isOpen={isOpen} onClose={onClose}>
-    <h3 className="text-lg font-bold text-gray-800 mb-2">整理券除外設定</h3>
-    <p className="text-xs text-gray-500 mb-4">紛失した番号を選択してください。発券時にスキップされます。</p>
+    <h3 className="text-lg font-bold text-gray-800 mb-2">紛失した整理券</h3>
+    <p className="text-xs text-gray-500 mb-4">紛失した番号を押すと赤くなり、その番号は発券されなくなります。見つかったら、もう一度押して解除してください。</p>
     <div className="grid grid-cols-5 gap-2 max-h-64 overflow-y-auto p-2 mb-4 bg-gray-50 rounded-lg border-2">
       {Array.from({ length: maxTicketNumber }, (_, i) => i + 1).map((num) => {
         const isLost = lostTickets.includes(num);
@@ -245,8 +245,8 @@ export const LostTicketModal = ({ isOpen, maxTicketNumber, lostTickets, onToggle
         );
       })}
     </div>
-    <button onClick={onClose} className="w-full py-3 bg-[#f3b928] text-gray-900 rounded-lg font-bold hover:bg-[#d6a11b] transition">
-      設定を閉じる
+    <button onClick={onClose} className="ui-button ui-button--primary w-full py-3">
+      閉じる
     </button>
   </BaseModal>
 );

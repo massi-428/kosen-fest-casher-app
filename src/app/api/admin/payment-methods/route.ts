@@ -40,8 +40,8 @@ async function handleRequest(request: Request, save: boolean) {
       : await Setting.findOne(filter);
     return NextResponse.json({ paymentMethods: (setting ?? new Setting()).paymentMethods });
   } catch (error) {
-    console.error('管理者決済方法設定エラー:', error);
-    return NextResponse.json({ message: save ? '決済方法の保存に失敗しました' : '決済方法の取得に失敗しました' }, { status: 500 });
+    console.error('管理者支払い方法設定エラー:', error);
+    return NextResponse.json({ message: save ? '支払い方法の保存に失敗しました' : '支払い方法の取得に失敗しました' }, { status: 500 });
   }
 }
 

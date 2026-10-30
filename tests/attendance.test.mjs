@@ -16,7 +16,7 @@ test('CSV groups by ID, sorts punches, pads rows and includes Japan dates and BO
     { personalId: 1, clockIn: '2026-10-30T02:00:00Z', clockOut: '2026-10-30T03:00:00Z' },
     { personalId: 1, clockIn: '2026-10-29T23:00:00Z', clockOut: '2026-10-30T01:00:00Z' },
   ]);
-  assert.equal(csv, '\uFEFFID,出勤,退勤,出勤,退勤\r\n1,2026-10-30 08:00:00,2026-10-30 10:00:00,2026-10-30 11:00:00,2026-10-30 12:00:00\r\n2,2026-10-30 11:00:00,,,\r\n');
+  assert.equal(csv, '\uFEFFID,出勤,退勤,出勤,退勤\r\n1,2026-10-30 08:00,2026-10-30 10:00,2026-10-30 11:00,2026-10-30 12:00\r\n2,2026-10-30 11:00,,,\r\n');
   assert.equal(attendanceCsv([]), '\uFEFFID,出勤,退勤\r\n');
 });
 
@@ -55,7 +55,7 @@ test('CSV endpoint exports all records beyond the UI limit with attachment heade
   assert.match(response.headers.get('content-type'), /text\/csv/);
   const csv = await response.text();
   assert.equal(csv.trim().split('\r\n').length, 106);
-  assert.match(csv, /105,2026-10-30 10:00:00,/);
+  assert.match(csv, /105,2026-10-30 10:00,/);
 });
 test('festival shifts allow exactly two days and 10–16 in half-hour steps', () => {
   assert.deepEqual(festivalShift(1, '10:00', '16:00'), { festivalDay: 1, startTime: '10:00', endTime: '16:00' });

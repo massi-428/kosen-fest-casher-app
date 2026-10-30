@@ -81,7 +81,7 @@ export default function AdminPage() {
         setCancelPassword(data.cancelPassword || '0000');
       }
     } catch (error) {
-      console.error('システム設定取得エラー:', error);
+      console.error('店舗設定取得エラー:', error);
     }
   };
 
@@ -138,13 +138,13 @@ export default function AdminPage() {
       try {
         const res = await apiFetch(`/api/admin/payment-methods?storeId=${encodeURIComponent(paymentStoreId)}`, { cache: 'no-store' });
         const data = await res.json();
-        if (!res.ok) throw new Error(data.message || '決済方法の取得に失敗しました');
+        if (!res.ok) throw new Error(data.message || '支払い方法の取得に失敗しました');
         if (!cancelled) {
           setPaymentMethods(data.paymentMethods);
           setPaymentReady(true);
         }
       } catch {
-        if (!cancelled) setPaymentMessage('決済方法の取得に失敗しました。店舗を選択し直してください。');
+        if (!cancelled) setPaymentMessage('支払い方法の取得に失敗しました。店舗を選択し直してください。');
       }
     };
     fetchPayments();
@@ -162,11 +162,11 @@ export default function AdminPage() {
         body: JSON.stringify({ paymentMethods }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.message || '決済方法の保存に失敗しました');
+      if (!res.ok) throw new Error(data.message || '支払い方法の保存に失敗しました');
       setPaymentMethods(data.paymentMethods);
-      setPaymentMessage('決済方法を保存しました');
+      setPaymentMessage('支払い方法を保存しました');
     } catch (error) {
-      setPaymentMessage(error instanceof Error ? error.message : '決済方法の保存に失敗しました');
+      setPaymentMessage(error instanceof Error ? error.message : '支払い方法の保存に失敗しました');
     } finally {
       setSavingPayments(false);
     }
@@ -233,9 +233,9 @@ export default function AdminPage() {
             </div>
 
             <div>
-              <label className="block text-gray-700 font-bold mb-2">決済方法の設定</label>
+              <label className="block text-gray-700 font-bold mb-2">支払い方法の設定</label>
               <select
-                aria-label="決済方法を設定する店舗"
+                aria-label="支払い方法を設定する店舗"
                 value={paymentStoreId}
                 disabled={loadingStores || savingPayments}
                 onChange={(e) => { setPaymentReady(false); setPaymentStoreId(e.target.value); }}
@@ -244,8 +244,8 @@ export default function AdminPage() {
                 <option value="">{loadingStores ? '店舗を読み込み中...' : '店舗を選択してください'}</option>
                 {paymentStores.map((store) => <option key={store.id} value={store.id}>{store.name}（{store.ownerUserId}）</option>)}
               </select>
-              <p className="text-xs text-gray-500 mb-3">選択した店舗の設定済み決済方法を表示します。追加・削除後は「決済方法を保存する」を押してください。</p>
-              {paymentStoreId && !paymentReady && !paymentMessage && <p role="status" className="text-sm mb-3">決済方法を読み込み中...</p>}
+              <p className="text-xs text-gray-500 mb-3">選択した店舗の設定済み支払い方法を表示します。追加・削除後は「支払い方法を保存する」を押してください。</p>
+              {paymentStoreId && !paymentReady && !paymentMessage && <p role="status" className="text-sm mb-3">支払い方法を読み込み中...</p>}
               <fieldset disabled={!paymentReady || savingPayments}>
               <div className="flex gap-2 mb-3">
                 <input
@@ -255,7 +255,7 @@ export default function AdminPage() {
                   placeholder="例: d払い"
                   className="flex-1 border-2 p-2 rounded-lg outline-none focus:ring-2 focus:ring-[#f3b928]"
                 />
-                <button onClick={addPaymentMethod} className="bg-[#f3b928] text-gray-900 px-4 rounded-lg font-bold hover:bg-[#d6a11b] transition">
+                <button onClick={addPaymentMethod} className="ui-button ui-button--primary px-4">
                   追加
                 </button>
               </div>
@@ -263,25 +263,23 @@ export default function AdminPage() {
                 {paymentMethods.map((method) => (
                   <div key={method} className="bg-gray-100 px-3 py-1 rounded-full flex items-center gap-2 border border-gray-300">
                     <span className="font-bold text-sm">{method}</span>
-                    <button aria-label={`${method}を削除`} onClick={() => removePaymentMethod(method)} className="text-red-500 font-bold px-1 hover:text-red-700">x</button>
+                    <button aria-label={`${method}を削除`} onClick={() => removePaymentMethod(method)} className="ui-button ui-button--danger px-1">x</button>
                   </div>
                 ))}
               </div>
-              {paymentReady && paymentMethods.length === 0 && <p className="text-sm text-gray-500">決済方法が設定されていません。</p>}
-              <button onClick={savePaymentMethods} className="mt-3 w-full bg-[#f3b928] py-2 rounded-lg font-bold disabled:bg-gray-200">
-                {savingPayments ? '保存中...' : '決済方法を保存する'}
+              {paymentReady && paymentMethods.length === 0 && <p className="text-sm text-gray-500">支払い方法が設定されていません。</p>}
+              <button onClick={savePaymentMethods} className="ui-button ui-button--primary mt-3 w-full py-2">
+                {savingPayments ? '保存中...' : '支払い方法を保存する'}
               </button>
               </fieldset>
-              <Toast show={paymentMessage === '決済方法を保存しました'} message={paymentMessage} title="保存完了" onClose={() => setPaymentMessage('')} />
-              {paymentMessage && paymentMessage !== '決済方法を保存しました' && <p role="status" className="mt-2 text-sm">{paymentMessage}</p>}
+              <Toast show={paymentMessage === '支払い方法を保存しました'} message={paymentMessage} title="保存完了" onClose={() => setPaymentMessage('')} />
+              {paymentMessage && paymentMessage !== '支払い方法を保存しました' && <p role="status" className="mt-2 text-sm">{paymentMessage}</p>}
             </div>
 
             <button
               onClick={handleSave}
               disabled={loading}
-              className={`w-full py-4 rounded-xl font-bold text-gray-900 text-lg shadow-md transition ${
-                loading ? 'bg-gray-400' : 'bg-[#f3b928] hover:bg-[#d6a11b]'
-              }`}
+              className="ui-button ui-button--primary w-full py-4"
             >
               {loading ? '保存中...' : '設定を保存する'}
             </button>
@@ -291,7 +289,7 @@ export default function AdminPage() {
             <div className="p-5 bg-blue-50 rounded-xl border-2 border-blue-100">
               <div className="flex justify-between items-center mb-4 border-b border-blue-100 pb-2">
                 <h2 className="text-lg font-bold text-blue-900">店舗管理</h2>
-                <button onClick={fetchStoreData} disabled={loadingStores} className="text-sm bg-blue-200 hover:bg-blue-300 text-blue-900 px-3 py-1 rounded font-bold transition">
+                <button onClick={fetchStoreData} disabled={loadingStores} className="ui-button ui-button--secondary text-sm px-3 py-1">
                   {loadingStores ? '更新中...' : '再読み込み'}
                 </button>
               </div>
@@ -345,7 +343,7 @@ export default function AdminPage() {
             <div className="p-5 bg-red-50 rounded-xl border-2 border-red-200">
               <div className="flex justify-between items-center mb-4 border-b border-red-200 pb-2">
                 <h2 className="text-lg font-bold text-red-800">データベース管理</h2>
-                <button onClick={fetchDbStats} disabled={loadingDb} className="text-sm bg-red-200 hover:bg-red-300 text-red-800 px-3 py-1 rounded font-bold transition">
+                <button onClick={fetchDbStats} disabled={loadingDb} className="ui-button ui-button--danger text-sm px-3 py-1">
                   {loadingDb ? '更新中...' : '再読み込み'}
                 </button>
               </div>
@@ -380,7 +378,7 @@ export default function AdminPage() {
             await fetch('/api/logout', { method: 'POST' }).catch(() => {});
             navigateTo('/login');
           }}
-          className="w-full py-3 rounded-lg font-bold text-red-600 bg-red-50 hover:bg-red-100 border border-red-200 transition mt-6"
+          className="ui-button ui-button--danger w-full py-3 mt-6"
         >
           ログアウト
         </button>

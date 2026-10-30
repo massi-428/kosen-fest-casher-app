@@ -84,8 +84,8 @@ test('cancellation requires password and a reserved settlement operation', () =>
   assert.match(source, /status: 403/);
   assert.match(source, /settlementLock/);
   assert.match(source, /phase: 'prepared'/);
-  assert.match(read('src/app/api/tickets/route.ts'), /全取消は先に精算対象を確定/);
-  assert.match(read('src/app/history/page.tsx'), /返金対象を確定/);
+  assert.match(read('src/app/api/tickets/route.ts'), /注文のキャンセルは、注文履歴の/);
+  assert.match(read('src/app/history/page.tsx'), /返金・確認画面へ進む/);
 });
 
 test('store data is scoped by storeId in core APIs', () => {
@@ -158,7 +158,7 @@ test('orders track pending item warning thresholds', () => {
   assert.match(ordersRoute, /未提供数が警告基準を超えています/);
   assert.doesNotMatch(ordersRoute, /acceptingOrders/);
   assert.doesNotMatch(settingsPage, /受注を停止/);
-  assert.match(settingsPage, /未提供数の警告基準/);
+  assert.match(settingsPage, /未提供の商品数の目安/);
   assert.match(read('src/app/order/page.tsx'), /handleOpenPayment/);
   assert.match(read('src/app/order/page.tsx'), /提供まで時間がかかる可能性があります/);
   assert.match(read('src/app/order/page.tsx'), /それでも注文を追加しますか/);
@@ -209,9 +209,9 @@ test('open order edits use reservation before handoff and preserve original cash
   assert.match(route, /revisionFilter/);
   assert.match(route, /settlementOperations: operations/);
   assert.match(route, /settlements:/);
-  assert.match(route, /受け渡し開始後は中止できません/);
-  assert.match(read('src/components/order/EditOrderModal.tsx'), /精算対象を確定/);
-  assert.match(read('src/components/order/SettlementModal.tsx'), /結果確認/);
+  assert.match(route, /支払い・返金の手続き開始後は、元に戻せません/);
+  assert.match(read('src/components/order/EditOrderModal.tsx'), /変更内容の確認へ進む/);
+  assert.match(read('src/components/order/SettlementModal.tsx'), /最新の状態を確認する/);
 });
 
 test('daily sales report can be exported as a UTF-8 CSV', () => {
@@ -226,7 +226,7 @@ test('daily sales report can be exported as a UTF-8 CSV', () => {
   assert.match(reportPage, /text\/csv;charset=utf-8/);
   assert.match(reportPage, /rootine-sales-\$\{date\}\.csv/);
   assert.match(reportPage, /売上扱い/);
-  assert.match(reportPage, /全注文CSV/);
+  assert.match(reportPage, /注文一覧をCSVで保存/);
 });
 
 test('admin login does not assign store context', () => {

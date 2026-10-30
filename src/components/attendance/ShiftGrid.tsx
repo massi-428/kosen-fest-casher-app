@@ -5,15 +5,15 @@ import { festivalShift } from '@/lib/attendance';
 
 type Employee = { personalId: number; name: string; archivedAt?: string | null };
 type Shift = { _id: string; personalId: number; festivalDay?: number; startTime?: string; endTime?: string };
-const times = Array.from({ length: 13 }, (_, i) => `${10 + Math.floor(i / 2)}:${i % 2 ? '30' : '00'}`);
-const slot = (time: string) => (Number(time.slice(0, 2)) - 10) * 2 + Number(time.slice(3)) / 30;
+const times = Array.from({ length: 7 }, (_, i) => `${10 + i}:00`);
+const slot = (time: string) => Number(time.slice(0, 2)) - 10 + Number(time.slice(3)) / 60;
 const pageSize = 40;
 const width = 1200;
 const left = 300;
-const cell = 72;
+const cell = 144;
 const top = 120;
 const rowHeight = 58;
-const button = 'rounded-lg border px-3 py-2 text-sm font-bold disabled:opacity-40';
+const button = 'ui-button ui-button--secondary';
 
 export function ShiftGrid({ employees, shifts }: { employees: Employee[]; shifts: Shift[] }) {
   const [day, setDay] = useState(1);
@@ -24,7 +24,7 @@ export function ShiftGrid({ employees, shifts }: { employees: Employee[]; shifts
   const exportLock = useRef(false);
   const valid = shifts.filter(s => festivalShift(s.festivalDay, s.startTime, s.endTime));
   const daily = valid.filter(s => s.festivalDay === day);
-  const staff = new Map(employees.filter(e => !e.archivedAt).map(e => [e.personalId, e]));
+  const staff = new Map<number, Employee>();
   for (const shift of daily) {
     if (!staff.has(shift.personalId)) staff.set(shift.personalId, employees.find(e => e.personalId === shift.personalId) || { personalId: shift.personalId, name: '未登録スタッフ' });
   }
@@ -62,11 +62,11 @@ export function ShiftGrid({ employees, shifts }: { employees: Employee[]; shifts
   return <section className="rounded-xl border bg-white p-3 space-y-3">
     <div className="flex flex-wrap items-center justify-between gap-3">
       <h2 className="text-lg font-bold">シフト表</h2>
-      <button type="button" className={`${button} bg-gray-900 text-white`} disabled={saving || !visible.length} onClick={() => void savePng()}>{saving ? 'PNG作成中…' : '表示中のページをPNG保存'}</button>
+      <button type="button" className="ui-button ui-button--primary" disabled={saving || !visible.length} onClick={() => void savePng()}>{saving ? '画像を作成中…' : 'このページを画像で保存'}</button>
     </div>
     <div className="flex flex-wrap items-center gap-2" aria-label="シフト表の日程">
       {[1, 2].map(value => <button key={value} type="button" disabled={saving} aria-pressed={day === value} className={`${button} ${day === value ? 'bg-yellow-300 border-yellow-500' : 'bg-white'}`} onClick={() => { setDay(value); setPage(0); setError(''); }}>{value}日目</button>)}
-      <span className="text-sm text-gray-600">30分刻み・日本時間／色付き：勤務予定、空欄：シフトなし</span>
+      <span className="text-sm text-gray-600">1時間刻み・日本時間／その日にシフトがあるスタッフを表示</span>
     </div>
     {valid.length !== shifts.length && <p className="text-sm text-amber-800">旧設定など、日程・時刻が未設定のシフトは表に含まれません。下の「登録済みシフト」から編集してください。</p>}
     {error && <p role="alert" className="text-sm text-red-700">{error}</p>}
@@ -76,7 +76,7 @@ export function ShiftGrid({ employees, shifts }: { employees: Employee[]; shifts
         <title>{day}日目のシフト表</title>
         <rect width={width} height={height} fill="#ffffff" />
         <text x={24} y={38} fontSize={24} fontWeight="bold" fill="#111827">シフト表 · {day}日目</text>
-        <text x={24} y={65} fontSize={14} fill="#4b5563">10:00〜16:00／30分刻み・日本時間　｜　{currentPage + 1} / {pages}ページ</text>
+        <text x={24} y={65} fontSize={14} fill="#4b5563">10:00〜16:00／1時間刻み・日本時間　｜　{currentPage + 1} / {pages}ページ</text>
         <rect x={24} y={84} width={width - 48} height={36} fill="#f3f4f6" />
         <text x={36} y={108} fontSize={14} fontWeight="bold" fill="#374151">ID · スタッフ</text>
         {times.map((time, i) => <text key={time} x={left + i * cell} y={108} textAnchor="middle" fontSize={12} fill="#374151">{time}</text>)}
@@ -90,7 +90,7 @@ export function ShiftGrid({ employees, shifts }: { employees: Employee[]; shifts
             <rect x={24} y={y} width={width - 48} height={rowHeight} fill={index % 2 ? '#f9fafb' : '#ffffff'} />
             <text x={36} y={y + 22} fontSize={13} fill="#4b5563">ID {employee.personalId}</text>
             <text x={36} y={y + 43} fontSize={15} fontWeight="bold" fill="#111827">{name.length > 16 ? name.slice(0, 15).join('') + '…' : employee.name}</text>
-            {times.map((time, i) => <line key={time} x1={left + i * cell} x2={left + i * cell} y1={y} y2={y + rowHeight} stroke={i % 2 ? '#e5e7eb' : '#cbd5e1'} />)}
+            {times.map((time, i) => <line key={time} x1={left + i * cell} x2={left + i * cell} y1={y} y2={y + rowHeight} stroke="#cbd5e1" />)}
             {assigned.map(s => {
               const x = left + slot(s.startTime!) * cell;
               const barWidth = (slot(s.endTime!) - slot(s.startTime!)) * cell;
@@ -101,7 +101,7 @@ export function ShiftGrid({ employees, shifts }: { employees: Employee[]; shifts
             <line x1={24} x2={width - 24} y1={y + rowHeight} y2={y + rowHeight} stroke="#e5e7eb" />
           </g>;
         })}
-        {!visible.length && <text x={36} y={top + 34} fontSize={16} fill="#6b7280">スタッフが登録されていません。</text>}
+        {!visible.length && <text x={36} y={top + 34} fontSize={16} fill="#6b7280">この日のシフトはありません。</text>}
         <text x={24} y={height - 16} fontSize={12} fill="#6b7280">色付き：勤務予定　／　空欄：シフトなし</text>
       </svg>
     </div>

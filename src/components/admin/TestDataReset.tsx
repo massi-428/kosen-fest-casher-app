@@ -37,7 +37,7 @@ export function TestDataReset() {
       <label className="block text-sm font-bold" htmlFor="test-reset-password">ログイン中の管理者のパスワード</label>
       <input id="test-reset-password" className="my-2 w-full rounded border p-2" type="password" autoComplete="current-password" maxLength={1024} required value={password} onChange={event => setPassword(event.target.value)} />
       <label className="my-2 block text-sm"><input type="checkbox" checked={confirmed} onChange={event => setConfirmed(event.target.checked)} /> テストデータを削除することを確認しました</label>
-      <button className="rounded bg-red-700 px-4 py-2 font-bold text-white disabled:opacity-50" disabled={busy || !confirmed || !password}>{busy ? 'リセット中…' : 'パスワードを確認してリセット'}</button>
+      <button className="ui-button ui-button--danger px-4 py-2 disabled:opacity-50" disabled={busy || !confirmed || !password}>{busy ? 'リセット中…' : 'パスワードを確認してリセット'}</button>
     </fieldset>
     <Toast show={result?.ok === true} title="リセット完了" message={result?.message || ''} onClose={() => setResult(null)} />
     {result && !result.ok && <p role="alert" className="mt-2 text-red-700">{result.message}</p>}

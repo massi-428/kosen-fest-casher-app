@@ -53,7 +53,7 @@ export function attendanceCsv(records: { personalId: number; clockIn: string | D
   const grouped = new Map<number, string[]>();
   for (const record of [...records].sort((a, b) => a.personalId - b.personalId || new Date(a.clockIn).getTime() - new Date(b.clockIn).getTime())) {
     const row = grouped.get(record.personalId) || [];
-    const format = (value: string | Date) => attendanceInput(value).slice(0, 19).replace('T', ' ');
+    const format = (value: string | Date) => attendanceInput(value).slice(0, 16).replace('T', ' ');
     row.push(format(record.clockIn), record.clockOut ? format(record.clockOut) : '');
     grouped.set(record.personalId, row);
   }

@@ -79,13 +79,13 @@ export default function HistoryPage() {
   };
 
   const fetchSequence = useRef(0);
-  const queryKey = date + ' / 整理番号 ' + (ticket || '全て') + ' / ' + ({ all: '全状態', active: '調理中', pending: '保留中', completed: '完了', cancelled: '取消' }[filterStatus]) + ' / ' + (page + 1) + 'ページ';
+  const queryKey = date + ' / 整理券番号 ' + (ticket || '全て') + ' / ' + ({ all: '全状態', active: '調理中', pending: '保留中', completed: '提供済み', cancelled: 'キャンセル済み' }[filterStatus]) + ' / ' + (page + 1) + 'ページ';
   const currentQuery = useRef(queryKey); currentQuery.current = queryKey;
   const pendingSequence = useRef(0);
   const fetchPending = useCallback(async () => {
     const sequence = ++pendingSequence.current;
-    try { const data = await requestJson('/api/settlements'); if (!Array.isArray(data)) throw new Error('精算状況が不正です。'); if (sequence !== pendingSequence.current) return false; setPendingSettlements(data); setPendingError(''); return true; }
-    catch { if (sequence === pendingSequence.current) setPendingError('未完了の精算を取得できません。再取得してください。'); return false; }
+    try { const data = await requestJson('/api/settlements'); if (!Array.isArray(data)) throw new Error('支払い・返金の状況が不正です。'); if (sequence !== pendingSequence.current) return false; setPendingSettlements(data); setPendingError(''); return true; }
+    catch { if (sequence === pendingSequence.current) setPendingError('手続きが未完了の注文を取得できません。再読み込みしてください。'); return false; }
   }, []);
   const fetchOrders = useCallback(async () => {
     const sequence = ++fetchSequence.current;
@@ -133,10 +133,10 @@ export default function HistoryPage() {
     editLock.current = true; setIsSavingEdit(true); setEditError('');
     try {
       const data = await postJson('/api/settlements', { action: 'prepare', kind: 'edit', operationId: settlement.requestId, orderId: editTarget._id, expectedRevision: editTarget.revision || 0, expectedTotal: settlement.expectedTotal, items: items.map(item => ({ lineId: item._id, productId: item.productId, quantity: item.quantity, detail: item.detail || '', selectedOptionNames: (item.selectedOptions || []).map(option => option.name) })), note });
-      if (!data.operation) throw new Error('精算対象を確認できません。');
+      if (!data.operation) throw new Error('変更する注文を確認できません。注文履歴から開き直してください。');
       showOperation(editTarget, data.operation);
     } catch (error) {
-      setEditError((error instanceof Error ? error.message : '通信エラー') + ' まだ受け渡しを行わないでください。');
+      setEditError((error instanceof Error ? error.message : '通信エラー') + ' まだ支払いや返金を行わないでください。');
       try { const data = await requestJson('/api/settlements?operationId=' + settlement.requestId); if (data.operation) showOperation(editTarget, data.operation); } catch { /* Keep the same operation ID for retry. */ }
       await fetchOrders(); await fetchPending();
     } finally { editLock.current = false; setIsSavingEdit(false); }
@@ -198,37 +198,38 @@ export default function HistoryPage() {
       
       {settlementTarget && <SettlementModal key={settlementTarget.operation.operationId} {...settlementTarget} onClose={() => { setSettlementTarget(null); void fetchOrders(); void fetchPending(); }} onUpdate={operation => { setSettlementTarget({ ...settlementTarget, operation }); void fetchOrders(); void fetchPending(); }} />}
       <BaseModal isOpen={detailTarget !== null} onClose={() => setDetailTarget(null)} size="xl">
-        {detailTarget && <><h3 className="mb-3 text-xl font-bold">注文詳細：{detailTarget.ticketNumber}番</h3><p>受付 {formatTime(detailTarget.createdAt)} ／ 提供 {formatTime(detailTarget.completedAt)} ／ 取消 {formatTime(detailTarget.cancelledAt)}</p>
+        {detailTarget && <><h3 className="mb-3 text-xl font-bold">注文詳細：{detailTarget.ticketNumber}番</h3><p>受付 {formatTime(detailTarget.createdAt)} ／ 提供 {formatTime(detailTarget.completedAt)} ／ キャンセル {formatTime(detailTarget.cancelledAt)}</p>
           <div className="my-4 space-y-3">{detailTarget.items.map((item, i) => <div key={i} className="rounded border p-3"><b>{item.productName} × {item.quantity} ／ ¥{item.amount.toLocaleString()}</b><p>オプション: {(item.selectedOptions || []).map(o => o.name + '（' + o.price + '円）').join('、') || 'なし'}</p><p>商品メモ: {item.detail || 'なし'}</p></div>)}</div>
-          <p>注文備考: {detailTarget.note || 'なし'}</p><p>支払方法: {detailTarget.paymentMethod || '未記録'} ／ 合計 ¥{detailTarget.totalAmount.toLocaleString()}</p><p>初回預り: {detailTarget.receivedAmount ?? '未記録'} ／ 初回釣銭: {detailTarget.changeAmount ?? '未記録'}</p>
-          <h4 className="mt-4 font-bold">精算履歴</h4>{!(detailTarget.settlements || []).length && <p>精算履歴なし</p>}{(detailTarget.settlements || []).map(op => <p key={op.requestId}>{formatTime(op.createdAt)} {op.kind === 'cancel' ? '全取消' : '差額精算'} {op.delta}円（{op.paymentMethod}）変更前 {op.beforeAmount}円 → 変更後 {op.afterAmount}円 ／ 預り {op.receivedAmount ?? '—'} ／ 釣銭 {op.changeAmount ?? '—'}</p>)}<button className="mt-4 rounded bg-gray-100 p-3" onClick={() => setDetailTarget(null)}>閉じる</button></>}
+          <p>注文備考: {detailTarget.note || 'なし'}</p><p>支払い方法: {detailTarget.paymentMethod || '未記録'} ／ 合計 ¥{detailTarget.totalAmount.toLocaleString()}</p><p>最初のお預かり: {detailTarget.receivedAmount ?? '未記録'} ／ 最初のお釣り: {detailTarget.changeAmount ?? '未記録'}</p>
+          <h4 className="mt-4 font-bold">追加支払い・返金の履歴</h4>{!(detailTarget.settlements || []).length && <p>追加支払い・返金の履歴なし</p>}{(detailTarget.settlements || []).map(op => <p key={op.requestId}>{formatTime(op.createdAt)} {op.kind === 'cancel' ? '注文キャンセル' : '追加支払い・返金'} {op.delta}円（{op.paymentMethod}）変更前 {op.beforeAmount}円 → 変更後 {op.afterAmount}円 ／ お預かり {op.receivedAmount ?? '—'} ／ お釣り {op.changeAmount ?? '—'}</p>)}<button className="ui-button ui-button--secondary mt-4 p-3" onClick={() => setDetailTarget(null)}>閉じる</button></>}
       </BaseModal>
       {/* モーダル */}
       <SharedResultModal isOpen={modals.result} title={modalData.title || ''} message={modalData.message || ''} type={modalData.type || 'success'} onClose={() => toggleModal('result', false)} />
       <SharedConfirmModal isOpen={modals.confirm} message={modalData.message || ''} onConfirm={modalData.onConfirm || (() => {})} onCancel={() => toggleModal('confirm', false)} confirmLabel={modalData.confirmLabel} cancelLabel={modalData.cancelLabel} />
       <BaseModal isOpen={cancelTarget !== null} onClose={closeCancelModal} closeOnOverlayClick={!isCancelling}>
-        <h3 className="text-xl font-bold text-gray-800 text-center mb-3">注文のキャンセル</h3>
-        <p className="text-gray-600 text-center mb-4">{cancelTarget?.ticketNumber}番の注文をキャンセル（返金）扱いにします。<br />今回の返金額は ¥{cancelTarget?.totalAmount.toLocaleString()} です。過去の差額返金は含めません。まだ返金しないでください。先に返金対象を確定します。</p>
+        <h3 className="ui-title mb-3">注文をキャンセルする</h3>
+        <p className="mb-3">整理券 {cancelTarget?.ticketNumber}番 ／ 返金する金額 ¥{cancelTarget?.totalAmount.toLocaleString()}</p>
+        <div className="ui-notice mb-4"><p className="font-bold">この画面では、まだキャンセルは完了しません。</p><p className="mt-2">パスワードを入力すると、返金と最終確認の画面に進みます。返金が済んでから「注文のキャンセルを確定する」を押してください。完了後も履歴は残ります。</p></div>
         <label className="block text-sm font-bold text-gray-700 mb-2" htmlFor="cancel-password">キャンセル用パスワード</label>
         <input id="cancel-password" type="password" value={cancelPassword} onChange={(event) => { setCancelPassword(event.target.value); setCancelError(''); }} onKeyDown={(event) => { if (event.key === 'Enter') void submitCancelOrder(); }} autoFocus disabled={isCancelling} className="w-full border-2 border-gray-200 p-3 rounded-xl outline-none focus:ring-2 focus:ring-red-400" />
         {cancelError && <p className="mt-3 text-sm font-bold text-red-600 bg-red-50 border border-red-200 rounded-lg p-3">{cancelError}</p>}
         <div className="flex gap-3 mt-6">
-          <button type="button" onClick={closeCancelModal} disabled={isCancelling} className="flex-1 py-3 bg-gray-100 text-gray-700 rounded-xl font-bold disabled:opacity-50">戻る</button>
-          <button type="button" onClick={() => void submitCancelOrder()} disabled={isCancelling || !cancelPassword.trim()} className="flex-1 py-3 bg-red-600 text-white rounded-xl font-bold disabled:opacity-50">{isCancelling ? '処理中...' : '返金対象を確定'}</button>
+          <button type="button" onClick={closeCancelModal} disabled={isCancelling} className="ui-button ui-button--secondary flex-1 py-3 disabled:opacity-50">戻る</button>
+          <button type="button" onClick={() => void submitCancelOrder()} disabled={isCancelling || !cancelPassword.trim()} className="ui-button ui-button--primary flex-1">{isCancelling ? '確認中…' : '返金・確認画面へ進む'}</button>
         </div>
       </BaseModal>
       <EditOrderModal {...cashSettings} order={editTarget} products={products} customizations={customizations} saving={isSavingEdit} error={editError} onClose={() => { if (!isSavingEdit) { setEditTarget(null); setEditError(''); } }} onSave={(items, note, settlement) => void saveOrderEdit(items, note, settlement)} />
 
-      <div className="flex justify-between items-center mb-6 bg-white p-4 rounded-xl shadow-md">
-        <h1 className="text-3xl font-bold text-gray-800">注文履歴と管理</h1>
+      <div className="flex flex-wrap justify-between items-center gap-4 mb-6 bg-white p-4 rounded-xl border border-gray-200">
+        <div><h1 className="ui-title">注文履歴</h1><p className="ui-help mt-1">注文の確認・変更・キャンセルができます。</p></div>
         <div className="flex flex-wrap items-center gap-4">
-          <button onClick={() => router.push('/order')} className="text-gray-500 hover:text-gray-700 font-bold px-4 py-2 bg-gray-100 rounded-lg transition mr-2">← 注文画面へ</button>
-          <input aria-label="履歴の日付（日本時間）" type="date" value={date} onChange={e => { setPage(0); setDate(e.target.value); }} className="rounded border p-2" /><input aria-label="整理番号で検索" placeholder="整理番号" value={ticket} onChange={e => { setPage(0); setTicket(e.target.value); }} className="w-24 rounded border p-2" />
+          <button onClick={() => router.push('/order')} className="ui-button ui-button--secondary px-4 py-2 mr-2">← 注文画面へ</button>
+          <input aria-label="履歴の日付（日本時間）" type="date" value={date} onChange={e => { setPage(0); setDate(e.target.value); }} className="rounded border p-2" /><input aria-label="整理券番号で検索" placeholder="整理券番号" value={ticket} onChange={e => { setPage(0); setTicket(e.target.value); }} className="w-24 rounded border p-2" />
           <select value={filterStatus} onChange={(e) => (setPage(0), setFilterStatus(e.target.value as OrderStatusFilter))} className="border border-gray-300 p-2 rounded-lg font-bold outline-none focus:ring-2 focus:ring-[#f3b928]">
             <option value="all">全て表示</option>
             <option value="active">調理中</option>
             <option value="pending">保留中</option>
-            <option value="completed">完了済み</option>
+            <option value="completed">提供済み</option>
             <option value="cancelled">キャンセル済み</option>
           </select>
         </div>
@@ -236,24 +237,24 @@ export default function HistoryPage() {
       
       <div className="mb-4 flex items-start justify-between gap-3 rounded-xl bg-white p-3">
         <div role="status" className="min-w-0">
-          <p>最終成功: {lastUpdated || '未取得'} {loading && '／読み込み中…'}</p>
+          <p>最終更新: {lastUpdated || 'まだ読み込んでいません'} {loading && '／読み込み中…'}</p>
           {loadedQuery && <p>表示データ: {loadedQuery}</p>}
-          {(fetchError || (loadedQuery && loadedQuery !== queryKey)) && <p className="font-bold text-red-600">{fetchError} {loadedQuery ? '最後に取得したデータです。最新の検索結果ではありません。' : '注文は未取得です。'}</p>}
+          {(fetchError || (loadedQuery && loadedQuery !== queryKey)) && <p className="font-bold text-red-600">{fetchError} {loadedQuery ? '最後に取得したデータです。最新の検索結果ではありません。' : '注文をまだ読み込めていません。'}</p>}
           {pendingError && <p className="text-red-600">{pendingError}</p>}
           {operationError && <p className="text-red-600">{operationError}</p>}
           {!loading && !fetchError && loadedQuery === queryKey && orders.length === 0 && <p>検索結果はありません。</p>}
         </div>
-        <button type="button" onClick={() => { void fetchOrders(); void fetchPending(); }} aria-label="履歴と未完了の精算を再読み込み" title="再読み込み" className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-blue-600 text-white shadow-sm transition hover:bg-blue-700 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2">
+        <button type="button" onClick={() => { void fetchOrders(); void fetchPending(); }} aria-label="履歴と手続きが未完了の注文を再読み込み" title="再読み込み" className="ui-button ui-button--secondary flex h-11 w-11 shrink-0 items-center justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2">
           <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5"><path d="M20 7v5h-5" /><path d="M4 17v-5h5" /><path d="M6.1 7a7 7 0 0 1 11.55-1.65L20 8M4 16l2.35 2.65A7 7 0 0 0 17.9 17" /></svg>
         </button>
       </div>
-      {pendingSettlements.length > 0 && <div className="mb-4 rounded-xl bg-yellow-50 p-4"><h2 className="font-bold">未完了の精算（日付検索の対象外も表示）</h2>{pendingSettlements.map(order => <button key={order._id} className="m-2 rounded border p-2" onClick={() => { const operation = order.settlementOperations?.find(op => op.operationId === order.settlementLock); if (operation) showOperation(order, operation); }}>{formatTime(order.createdAt)} ／ {order.ticketNumber}番：精算を確認・再開</button>)}</div>}
+      {pendingSettlements.length > 0 && <div className="ui-notice mb-4"><h2 className="font-bold">手続きが未完了の注文</h2><p className="mt-1">注文の変更・キャンセルが途中です。番号を選んで続きを行ってください。検索した日付以外の注文も表示しています。</p>{pendingSettlements.map(order => <button key={order._id} className="ui-button ui-button--secondary m-2" onClick={() => { const operation = order.settlementOperations?.find(op => op.operationId === order.settlementLock); if (operation) showOperation(order, operation); }}>{formatTime(order.createdAt)} ／ {order.ticketNumber}番：手続きを続ける</button>)}</div>}
       <div className="mb-4 flex gap-3"><button disabled={page === 0} onClick={() => setPage(p => p - 1)}>前の100件</button><span>{page + 1}ページ ／ {total}件</span><button disabled={(page + 1) * 100 >= total} onClick={() => setPage(p => p + 1)}>次の100件</button></div>
       <div className="bg-white p-6 rounded-xl shadow-md mb-6">
         <h2 className="text-lg font-bold text-gray-700 mb-4 flex items-center gap-2">
           <span>📊</span> 時間帯別注文数 <span className="text-xs text-gray-500 font-normal">(日本時間・キャンセル除外・検索条件の全件)</span><span className="text-xs">{loadedQuery || queryKey}</span>
         </h2>
-        {!loadedQuery ? <p>{loading ? '集計を読み込み中…' : '集計は未取得です。再取得してください。'}</p> : <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-12 gap-2">
+        {!loadedQuery ? <p>{loading ? '集計を読み込み中…' : '集計は未取得です。再読み込みしてください。'}</p> : <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-12 gap-2">
           {hourlyStats.map((count, hour) => (
             <div key={hour} className={`flex flex-col items-center justify-center p-2 rounded border ${count > 0 ? 'bg-blue-50 border-blue-200' : 'bg-gray-50 border-gray-100 opacity-50'}`}>
               <span className="text-xs text-gray-500">{hour}:00</span>
@@ -292,8 +293,8 @@ export default function HistoryPage() {
                 <td className={`px-6 py-4 text-right font-bold ${order.status === 'cancelled' ? 'line-through text-gray-400' : ''}`}>
                   <div>¥{order.totalAmount.toLocaleString()}</div>
                   {order.paymentMethod && <div className="text-xs font-medium text-gray-500">{order.paymentMethod}</div>}
-                  {typeof order.receivedAmount === 'number' && typeof order.changeAmount === 'number' && <div className="mt-1 text-xs font-medium text-gray-500">初回預り ¥{order.receivedAmount.toLocaleString()} / 初回釣銭 ¥{order.changeAmount.toLocaleString()}</div>}
-                  {(order.settlements || []).map(entry => <div key={entry.requestId} className="mt-2 text-xs font-medium text-blue-700">{new Date(entry.createdAt).toLocaleString()} {entry.kind === 'cancel' ? '全取消返金' : entry.delta > 0 ? '追加徴収' : '差額返金'} ¥{Math.abs(entry.delta).toLocaleString()}（{entry.paymentMethod}）変更前 ¥{entry.beforeAmount.toLocaleString()} → 変更後 ¥{entry.afterAmount.toLocaleString()}{typeof entry.receivedAmount === 'number' && <span> 預り ¥{entry.receivedAmount} / 釣銭 ¥{entry.changeAmount}</span>}</div>)}
+                  {typeof order.receivedAmount === 'number' && typeof order.changeAmount === 'number' && <div className="mt-1 text-xs font-medium text-gray-500">最初のお預かり ¥{order.receivedAmount.toLocaleString()} / 最初のお釣り ¥{order.changeAmount.toLocaleString()}</div>}
+                  {(order.settlements || []).map(entry => <div key={entry.requestId} className="mt-2 text-xs font-medium text-blue-700">{new Date(entry.createdAt).toLocaleString()} {entry.kind === 'cancel' ? 'キャンセルによる返金' : entry.delta > 0 ? '追加のお支払い' : '差額の返金'} ¥{Math.abs(entry.delta).toLocaleString()}（{entry.paymentMethod}）変更前 ¥{entry.beforeAmount.toLocaleString()} → 変更後 ¥{entry.afterAmount.toLocaleString()}{typeof entry.receivedAmount === 'number' && <span> お預かり ¥{entry.receivedAmount} / お釣り ¥{entry.changeAmount}</span>}</div>)}
                 </td>
                 <td className="px-6 py-4 text-center">
                   <span className={`px-3 py-1 text-xs rounded-full font-bold shadow-sm ${
@@ -302,16 +303,16 @@ export default function HistoryPage() {
                     order.status === 'completed' ? 'bg-green-100 text-green-800 border border-green-200' : 
                     'bg-gray-200 text-gray-600 border border-gray-300'
                   }`}>
-                    {order.status === 'active' ? '調理中' : order.status === 'pending' ? '保留中' : order.status === 'completed' ? '完了済み' : 'キャンセル'}
+                    {order.status === 'active' ? '調理中' : order.status === 'pending' ? '保留中' : order.status === 'completed' ? '提供済み' : 'キャンセル済み'}
                   </span>
                 </td>
                 <td className="px-6 py-4 text-right">
-                  <button className="mb-2 text-blue-700" onClick={() => setDetailTarget(order)}>詳細</button>
+                  <button className="ui-button ui-button--secondary mb-2" onClick={() => setDetailTarget(order)}>詳細</button>
                   <fieldset disabled={!!order.settlementLock || busy.includes(order._id) || isCancelling || isSavingEdit} className="flex justify-end gap-2">
-                    {order.status === 'completed' && <button onClick={() => handleToggleStatus(order)} className="rounded-lg bg-blue-50 px-3 py-1.5 font-bold text-blue-700">完了を取り消す</button>}
-                    {(order.status === 'active' || order.status === 'pending') && <button onClick={() => { setEditTarget(order); setEditError(''); void fetchEditReferences(); }} className="text-blue-600 bg-blue-50 px-3 py-1.5 rounded-lg border border-blue-200 hover:bg-blue-100 font-bold transition shadow-sm">内容編集</button>}
-                    {order.status === 'active' && <button onClick={() => handleToggleStatus(order)} className="text-green-600 bg-green-50 px-3 py-1.5 rounded-lg border border-green-200 hover:bg-green-100 font-bold transition shadow-sm">完了</button>}
-                    {order.status !== 'cancelled' && <button onClick={() => handleCancelOrder(order)} className="text-red-600 bg-red-50 px-3 py-1.5 rounded-lg border border-red-200 hover:bg-red-100 font-bold transition shadow-sm">キャンセル</button>}
+                    {order.status === 'completed' && <button onClick={() => handleToggleStatus(order)} className="ui-button ui-button--secondary px-3 py-1.5">調理中に戻す</button>}
+                    {(order.status === 'active' || order.status === 'pending') && <button onClick={() => { setEditTarget(order); setEditError(''); void fetchEditReferences(); }} className="ui-button ui-button--secondary px-3 py-1.5">内容編集</button>}
+                    {order.status === 'active' && <button onClick={() => handleToggleStatus(order)} className="ui-button ui-button--secondary px-3 py-1.5">提供済みにする</button>}
+                    {order.status !== 'cancelled' && <button onClick={() => handleCancelOrder(order)} className="ui-button ui-button--danger px-3 py-1.5">注文をキャンセル</button>}
                   </fieldset>
                 </td>
               </tr>

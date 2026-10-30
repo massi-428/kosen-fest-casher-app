@@ -85,10 +85,10 @@ export default function PasswordPage() {
             <label className="block text-gray-700 font-bold mb-2">新しいパスワード</label>
             <input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} className="w-full border-2 p-3 rounded-lg outline-none focus:ring-2 focus:ring-[#f3b928]" />
           </div>
-          <button onClick={handleChangePassword} disabled={loading} className="w-full py-3 rounded-lg font-bold bg-[#f3b928] hover:bg-[#d6a11b] disabled:bg-gray-400 text-gray-900 transition">
+          <button onClick={handleChangePassword} disabled={loading} className="ui-button ui-button--primary w-full py-3">
             {loading ? '変更中...' : '変更する'}
           </button>
-          <button onClick={() => navigateTo('/settings')} className="w-full py-3 rounded-lg font-bold bg-gray-100 hover:bg-gray-200 text-gray-700 transition">
+          <button onClick={() => navigateTo('/settings')} className="ui-button ui-button--secondary w-full py-3">
             戻る
           </button>
         </div>

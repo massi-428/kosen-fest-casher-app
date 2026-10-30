@@ -108,7 +108,7 @@ export async function POST(request: Request) {
       if (managingRecord) {
         const record = await AttendanceRecord.findOne({ _id: body.recordId, storeId, personalId }).session(session);
         if (!record) return { message: '打刻履歴が見つかりません', status: 404 };
-        if (record.clockIn.toISOString() !== body.originalClockIn || (record.clockOut?.toISOString() ?? null) !== body.originalClockOut) return { message: '打刻履歴が変更されています。再取得してから操作してください', status: 409 };
+        if (record.clockIn.toISOString() !== body.originalClockIn || (record.clockOut?.toISOString() ?? null) !== body.originalClockOut) return { message: '打刻履歴が変更されています。再読み込みしてから操作してください', status: 409 };
         if (body.action === 'deleteRecord') {
           await AttendanceRecord.deleteOne({ _id: record._id, storeId, personalId }, { session });
           return { message: '打刻履歴を削除しました', status: 200 };
@@ -158,10 +158,10 @@ export async function POST(request: Request) {
       }
       const active = await AttendanceRecord.findOne({ storeId, personalId, clockOut: null }).session(session);
       if (body.action === 'clockIn') {
-        if (active) return { message: 'すでに出勤しています。状態を再取得してください', status: 409 };
+        if (active) return { message: 'すでに出勤しています。状態を再読み込みしてください', status: 409 };
         await AttendanceRecord.create([{ storeId, personalId, clockIn: new Date(), clockOut: null }], { session });
       } else {
-        if (!active || String(active._id) !== body.recordId) return { message: '勤怠状態が変わりました。状態を再取得してください', status: 409 };
+        if (!active || String(active._id) !== body.recordId) return { message: '勤怠状態が変わりました。状態を再読み込みしてください', status: 409 };
         active.clockOut = new Date();
         await active.save({ session });
       }
@@ -169,8 +169,8 @@ export async function POST(request: Request) {
     });
     return reply(result.message, result.status);
   } catch (error) {
-    if (error && typeof error === 'object' && 'code' in error && error.code === 11000) return reply('IDまたは勤怠状態が変更されました。再取得してください', 409);
+    if (error && typeof error === 'object' && 'code' in error && error.code === 11000) return reply('IDまたは勤怠状態が変更されました。再読み込みしてください', 409);
     if (error instanceof SyntaxError) return reply('入力が不正です');
-    return reply('保存できませんでした。再取得して状態を確認してください', 500);
+    return reply('保存できませんでした。再読み込みして状態を確認してください', 500);
   }
 }

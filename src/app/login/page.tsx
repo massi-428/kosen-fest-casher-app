@@ -35,7 +35,7 @@ export default function Login() {
         setError(data.message || 'ログインに失敗しました');
       }
     } catch {
-      setError('通信エラー');
+      setError('接続できませんでした。通信環境を確認して、もう一度ログインしてください。');
     } finally {
       setLoading(false);
     }
@@ -47,21 +47,21 @@ export default function Login() {
       <form onSubmit={handleSubmit} className="bg-white p-8 rounded-xl shadow-2xl w-full max-w-sm space-y-4">
         {error && <div className="bg-red-100 text-red-700 px-4 py-2 rounded text-sm">{error}</div>}
         <div>
-          <label className="block text-sm font-bold mb-1">ID</label>
-          <input type="text" name="id" required className="w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-[#f3b928] outline-none transition" />
+          <label htmlFor="login-id" className="block text-sm font-bold mb-1">ログインID</label>
+          <input id="login-id" type="text" name="id" autoComplete="username" required className="w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-[#f3b928] outline-none transition" />
         </div>
         <div>
-          <label className="block text-sm font-bold mb-1">パスワード</label>
-          <input type="password" name="password" required className="w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-[#f3b928] outline-none transition" />
+          <label htmlFor="login-password" className="block text-sm font-bold mb-1">パスワード</label>
+          <input id="login-password" type="password" name="password" autoComplete="current-password" required className="w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-[#f3b928] outline-none transition" />
         </div>
         <button
           type="submit"
           disabled={loading}
-          className={`mt-4 w-full py-3 bg-[#f3b928] text-gray-900 rounded-lg font-black hover:bg-[#d6a11b] transition shadow-md ${loading ? 'opacity-50 cursor-not-allowed' : ''}`}
+          className="ui-button ui-button--primary mt-4 w-full"
         >
           {loading ? '確認中...' : 'ログイン'}
         </button>
-        <a href="/signup" className="block text-center text-sm text-[#f3b928] hover:text-[#d6a11b] hover:underline font-bold mt-4">新規登録はこちら</a>
+        <a href="/signup" className="block text-center text-sm text-gray-700 underline font-bold mt-4">アカウントを作成する</a>
       </form>
     </div>
   );

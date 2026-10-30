@@ -28,14 +28,17 @@ export const BaseModal = ({ isOpen, onClose, children, closeOnOverlayClick = tru
 
   return (
     <div 
-      className="fixed inset-0 z-[100] flex items-center justify-center bg-black bg-opacity-50 transition-opacity p-4 font-sans"
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4 font-sans"
       onClick={() => {
         // ★修正: 設定がtrueの場合のみ閉じる
         if (closeOnOverlayClick) onClose();
       }} 
     >
       <div 
-        className={`bg-white rounded-2xl shadow-2xl p-6 w-full ${size === 'xl' ? 'max-w-4xl' : 'max-w-md'} max-h-[90vh] overflow-y-auto transform transition-all animate-bounceIn`}
+        role="dialog"
+        aria-modal="true"
+        aria-label="操作の確認"
+        className={`bg-white rounded-2xl border border-gray-200 shadow-xl p-5 sm:p-6 w-full ${size === 'xl' ? 'max-w-4xl' : 'max-w-md'} max-h-[90dvh] overflow-y-auto leading-relaxed`}
         onClick={(e) => e.stopPropagation()} 
       >
         {children}

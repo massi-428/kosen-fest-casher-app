@@ -40,7 +40,7 @@ export const Toast = ({ show, message, title, type = 'success', onClose }: Toast
           <p className="font-bold text-sm">{title || (type === 'success' ? '完了' : 'エラー')}</p>
           <p className="text-gray-600 text-sm whitespace-pre-wrap break-words">{message}</p>
         </div>
-        <button type="button" aria-label="通知を閉じる" onClick={onClose} className="shrink-0 text-gray-400 hover:text-gray-600 p-2">
+        <button type="button" aria-label="通知を閉じる" onClick={onClose} className="ui-button ui-button--secondary shrink-0 p-2">
           ✕
         </button>
       </div>

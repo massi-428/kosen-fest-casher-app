@@ -9,7 +9,7 @@ export function priceEditedItems(incoming: { lineId?: unknown; productId?: unkno
   return incoming.map(item => {
     if (!Number.isInteger(item.quantity) || Number(item.quantity) < 1 || Number(item.quantity) > 10000) throw new Error('数量は1〜10000の整数で入力してください。');
     const old = item.lineId ? original.find(line => String(line._id) === item.lineId) : undefined;
-    if (item.lineId && (!old || used.has(String(item.lineId)))) throw new Error('明細が変更されています。再取得してください。');
+    if (item.lineId && (!old || used.has(String(item.lineId)))) throw new Error('明細が変更されています。再読み込みしてください。');
     if (old) used.add(String(item.lineId));
     const product = products.find(p => String(p._id) === item.productId);
     if (old ? old.productId !== item.productId : !product || product.isAvailable === false) throw new Error('追加する商品が利用できません。');

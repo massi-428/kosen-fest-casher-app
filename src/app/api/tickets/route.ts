@@ -44,16 +44,16 @@ export async function PUT(request: Request) {
 
     const { status, orderId, expectedRevision } = await request.json();
     const newStatus = status || 'completed';
-    if (!isOrderStatus(newStatus) || !isValidObjectId(orderId)) return badRequest('注文ID・状態が正しくありません。画面を再取得してください。');
-    if (!Number.isInteger(expectedRevision) || expectedRevision < 0) return badRequest('更新情報が不足しています。画面を再取得してください。');
+    if (!isOrderStatus(newStatus) || !isValidObjectId(orderId)) return badRequest('注文ID・状態が正しくありません。画面を再読み込みしてください。');
+    if (!Number.isInteger(expectedRevision) || expectedRevision < 0) return badRequest('更新情報が不足しています。画面を再読み込みしてください。');
     if (newStatus === 'cancelled') {
-      return NextResponse.json({ message: '全取消は先に精算対象を確定してください。' }, { status: 409 });
+      return NextResponse.json({ message: '注文のキャンセルは、注文履歴の「注文をキャンセル」から行ってください。' }, { status: 409 });
     }
 
     const existingOrder = await Order.findOne({ _id: orderId, storeId: context.storeId });
     if (!existingOrder) return NextResponse.json({ message: '対象の注文が見つかりません。' }, { status: 404 });
     if (existingOrder.settlementLock) return NextResponse.json({ message: 'この注文は精算中のため変更できません。履歴で精算を完了してください。' }, { status: 409 });
-    if ((existingOrder.revision || 0) !== expectedRevision || !canTransition(existingOrder.status, newStatus)) return NextResponse.json({ message: '対象の注文は既に変更されています。再取得して状態を確認してください。' }, { status: 409 });
+    if ((existingOrder.revision || 0) !== expectedRevision || !canTransition(existingOrder.status, newStatus)) return NextResponse.json({ message: '対象の注文は既に変更されています。再読み込みして状態を確認してください。' }, { status: 409 });
     // The existing partial unique index also rejects a concurrent reuse of this number.
     if (newStatus === 'active' && existingOrder.status === 'completed' && await Order.exists({ storeId: context.storeId, ticketNumber: existingOrder.ticketNumber, status: { $in: ['active', 'pending'] } })) return NextResponse.json({ message: '整理券番号が別の注文で再利用されているため、完了を取り消せません。' }, { status: 409 });
     const update = (session?: import('mongoose').ClientSession) => Order.findOneAndUpdate(
@@ -66,7 +66,7 @@ export async function PUT(request: Request) {
         if (closedAt && new Date(existingOrder.createdAt) <= closedAt) throw new BusinessClosedError('〆作業済みの注文は調理中に戻せません。');
         return update(session);
       }) : await update();
-    if (!updatedOrder) return NextResponse.json({ message: '注文が他の端末で変更されました。再取得してください。' }, { status: 409 });
+    if (!updatedOrder) return NextResponse.json({ message: '注文が他の端末で変更されました。再読み込みしてください。' }, { status: 409 });
 
     const remaining = await Order.aggregate([{ $match: { storeId: context.storeId, status: { $in: ['active', 'pending'] } } }, { $unwind: '$items' }, { $group: { _id: null, count: { $sum: '$items.quantity' } } }]);
     await Setting.updateOne({ storeId: context.storeId, key: 'app_config' }, { $set: { pendingItemCount: remaining[0]?.count || 0 } });

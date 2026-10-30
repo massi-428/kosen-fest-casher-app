@@ -127,7 +127,7 @@ export default function OrderPage() {
     if (!Array.isArray(data)) throw new Error();
     setProducts(data); setProductsReady(true); setCatalogError('');
     return true;
-    } catch { setProductsReady(false); setCatalogError('商品情報を確認できません。接続回復後に自動で再取得します。'); return false; }
+    } catch { setProductsReady(false); setCatalogError('商品情報を確認できません。接続回復後に自動で再読み込みします。'); return false; }
   }, []);
 
   const ticketFetchSequence = useRef(0);
@@ -251,7 +251,7 @@ export default function OrderPage() {
       setQuote(data); setCheckoutPhase('ready'); setCartItemsState(pricedItems);
       persistDraft({ quote: data, phase: 'ready', items: pricedItems });
       const open = () => { toggleModal('confirm', false); toggleModal('payment', true); };
-      if (data.totalAmount !== totalAmount) toggleModal('confirm', true, { message: '価格が変更されています。表示金額 ¥' + totalAmount.toLocaleString() + ' → 確定金額 ¥' + data.totalAmount.toLocaleString() + '。新しい金額で会計しますか？まだ受け渡しをしないでください。', onConfirm: open, confirmLabel: '新しい金額で会計へ' });
+      if (data.totalAmount !== totalAmount) toggleModal('confirm', true, { message: '価格が変更されています。表示金額 ¥' + totalAmount.toLocaleString() + ' → 確定金額 ¥' + data.totalAmount.toLocaleString() + '。新しい金額で会計しますか？まだお支払いを受け取らないでください。', onConfirm: open, confirmLabel: '新しい金額で会計へ' });
       else toggleModal('payment', true);
     } catch (error) { setCheckoutError(error instanceof Error ? error.message : '会計金額を確認できません。'); }
     finally { checkoutLock.current = false; setIsQuoting(false); }
@@ -265,14 +265,14 @@ export default function OrderPage() {
   };
   const orderSucceeded = (order: { ticketNumber: string; changeAmount?: number }, warning?: { message?: string }) => {
     if (!order?.ticketNumber) throw new Error('登録結果の応答が正しくありません。');
-    showToast('注文を登録しました。整理番号: ' + order.ticketNumber + (typeof order.changeAmount === 'number' ? ' お釣り ¥' + order.changeAmount.toLocaleString() : '') + (warning?.message ? ' 警告: ' + warning.message : ''), 'success');
+    showToast('注文を登録しました。整理券番号: ' + order.ticketNumber + (typeof order.changeAmount === 'number' ? ' お釣り ¥' + order.changeAmount.toLocaleString() : '') + (warning?.message ? ' 警告: ' + warning.message : ''), 'success');
     if (identity) { try { removeDraft(identity.userId, identity.storeId); setDraftWarning(''); } catch { setDraftWarning('保存済みカートを消去できませんでした。次回は必ず登録結果を確認してください。'); } }
     setCartItemsState([]); setNoteState(''); setQuote(null); setSubmission(null); setCheckoutPhase('editing'); requestIdRef.current = newRequestId(); setCheckoutError(''); void fetchTicketStatus();
   };
   const checkOrderResult = async () => {
     if (checkoutLock.current || !identity) return;
     checkoutLock.current = true; setIsSubmitting(true);
-    try { const data = await requestJson('/api/orders?requestId=' + encodeURIComponent(requestIdRef.current)); if (data.order) orderSucceeded(data.order); else setCheckoutError('この操作IDの注文はまだ見つかりません。同じ操作IDで登録を再試行してください。新しい注文にはしないでください。'); }
+    try { const data = await requestJson('/api/orders?requestId=' + encodeURIComponent(requestIdRef.current)); if (data.order) orderSucceeded(data.order); else setCheckoutError('注文がまだ見つかりません。「注文の送信をやり直す」を押してください。重複を防ぐため、新しい注文は作らないでください。'); }
     catch (error) { setCheckoutError(error instanceof Error ? error.message : '結果を確認できません。'); }
     finally { checkoutLock.current = false; setIsSubmitting(false); }
   };
@@ -287,7 +287,7 @@ export default function OrderPage() {
       const data = await postJson('/api/orders', { requestId: requestIdRef.current, expectedTotal: quote.totalAmount, ...payment });
       orderSucceeded(data.order, data.warning);
     } catch (error) {
-      setCheckoutError((error instanceof Error ? error.message : '登録結果が不明です。') + ' 受け渡しは繰り返さず、結果確認してください。');
+      setCheckoutError((error instanceof Error ? error.message : '登録結果が不明です。') + ' 支払いや返金は繰り返さず、結果確認してください。');
       try { const data = await requestJson('/api/orders?requestId=' + encodeURIComponent(requestIdRef.current)); if (data.order) orderSucceeded(data.order); } catch { /* Keep cart and request ID until the result is known. */ }
     } finally { checkoutLock.current = false; setIsSubmitting(false); }
   };
@@ -381,8 +381,8 @@ export default function OrderPage() {
             {waitInfo && <p className="text-sm font-bold text-blue-700">現在の待ち時間目安: {waitInfo.estimatedWaitLabel}{!waitInfo.isEstimateReliable && <span className="ml-2 text-xs text-gray-500">（参考値）</span>}</p>}
           </div>
           <div className="flex items-center gap-3">
-            <button onClick={() => setIsEditMode(!isEditMode)} className={`px-4 py-2 rounded-full font-bold text-sm transition-all shadow-sm ${isEditMode ? 'bg-red-500 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'}`}>
-              {isEditMode ? '終了' : '商品管理'}
+            <button onClick={() => setIsEditMode(!isEditMode)} className="ui-button ui-button--secondary" aria-pressed={isEditMode}>
+              {isEditMode ? '商品管理を閉じる' : '商品管理'}
             </button>
             <SharedHamburgerMenu
               onNavigate={(path) => { persistDraft(); navigateTo(path); }}
@@ -403,14 +403,14 @@ export default function OrderPage() {
                   <>
                     <div onClick={(e) => handleDeleteProduct(e, product._id)} className="absolute top-1 right-1 w-6 h-6 bg-red-100 text-red-500 rounded-full flex items-center justify-center hover:bg-red-500 hover:text-white transition-colors z-10 font-bold text-xs">x</div>
                     <div onClick={(e) => void handleToggleAvailability(e, product)} className={`absolute left-1 top-1 rounded-md px-2 py-1 text-[10px] font-black text-white z-10 ${isAvailable ? 'bg-orange-500 hover:bg-orange-600' : 'bg-green-600 hover:bg-green-700'}`}>
-                      {isAvailable ? '売切設定' : '販売再開'}
+                      {isAvailable ? '売り切れにする' : '販売再開'}
                     </div>
                   </>
                 )}
               </button>
               );
             })}
-            {isEditMode && <button onClick={() => { setEditingProduct(null); setFormName(''); setFormPrice(''); }} className="h-28 border-4 border-dashed border-green-400 text-green-500 rounded-2xl font-black text-4xl hover:bg-green-50 transition-colors">+</button>}
+            {isEditMode && <button onClick={() => { setEditingProduct(null); setFormName(''); setFormPrice(''); }} className="ui-button ui-button--secondary h-28 text-4xl">+</button>}
           </div>
         </div>
       </div>
@@ -429,8 +429,8 @@ export default function OrderPage() {
                 <input value={formPrice} onChange={(e) => setFormPrice(e.target.value)} type="number" className="w-full border-2 border-gray-200 p-3 rounded-xl mt-1 outline-none focus:ring-2 focus:ring-[#f3b928] font-black font-mono" placeholder="450" />
               </div>
             </div>
-            <button onClick={handleSaveProduct} className="w-full py-4 bg-[#f3b928] text-gray-900 font-black rounded-xl shadow-lg hover:bg-[#d6a11b] transition transform active:scale-95 text-lg mt-6">保存する</button>
-            {editingProduct && <button onClick={(e) => handleDeleteProduct(e, editingProduct._id)} className="w-full py-3 mt-3 text-red-500 font-bold border-2 border-red-100 rounded-xl hover:bg-red-50">この商品を削除</button>}
+            <button onClick={handleSaveProduct} className="ui-button ui-button--primary w-full py-4 text-lg mt-6">保存する</button>
+            {editingProduct && <button onClick={(e) => handleDeleteProduct(e, editingProduct._id)} className="ui-button ui-button--danger w-full py-3 mt-3">この商品を削除</button>}
           </div>
         ) : (
           <>
@@ -439,7 +439,7 @@ export default function OrderPage() {
                 <span className="text-[9px] font-black tracking-widest opacity-80 uppercase leading-none">Ticket</span>
                 <div className="bg-white text-[#f3b928] px-3 py-0.5 rounded-lg font-black text-lg shadow-inner">{currentTicket}</div>
               </div>
-              <button onClick={() => toggleModal('lost', true)} className="text-[10px] bg-red-500 hover:bg-red-400 px-2 py-1.5 rounded-md font-black mr-1 border border-red-400 transition-colors shadow-sm text-white">紛失設定</button>
+              <button onClick={() => toggleModal('lost', true)} className="ui-button ui-button--danger px-2 py-1.5 mr-1">紛失した整理券</button>
             </div>
             <div className="px-3 py-2 border-b bg-green-50 text-green-800">
               <div className="min-w-0">
@@ -449,9 +449,9 @@ export default function OrderPage() {
             </div>
 
             <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain touch-pan-y p-3 space-y-2 bg-gray-50/50 shadow-inner">
-              {(draftWarning || checkoutError || changes.length > 0 || !draftReady || catalogError || !settingsReady) && <div className="rounded bg-yellow-50 p-3 text-sm" role="status">{!draftReady && <p>カートを読み込み中…</p>}<p>{draftWarning}</p>{catalogError && <p>{catalogError}</p>}{!settingsReady && <p>オプション設定を確認中です。復元した内容の比較は取得後に行います。</p>}{changes.map((change, i) => <p key={i}>{change}</p>)}{changes.length > 0 && checkoutPhase === 'editing' && <button onClick={refreshCart} className="mt-2 rounded border p-2">最新価格を反映・削除済みオプションを除く</button>}{checkoutError && <p className="text-red-700">{checkoutError}</p>}</div>}
-              {checkoutPhase === 'unknown' && <div className="rounded bg-orange-50 p-3 text-sm"><p>登録結果の確認待ちです。操作ID: {requestIdRef.current}</p><p>カートは変更できません。受け渡しを繰り返さないでください。</p><button disabled={isSubmitting} onClick={() => void checkOrderResult()} className="m-1 rounded border p-2">登録結果を確認</button><button disabled={isSubmitting || !submission} onClick={() => submission && void handleOrder(submission.paymentMethod, submission.receivedAmount)} className="m-1 rounded border p-2">同じ操作IDで再試行</button></div>}
-              {checkoutPhase === 'ready' && <div className="rounded bg-blue-50 p-3 text-sm"><p>提示金額 ¥{quote?.totalAmount.toLocaleString()} はこの会計に保証されます。</p><button onClick={resumePayment} className="m-1 rounded border p-2">会計を再開</button><button onClick={returnToCart} className="m-1 rounded border p-2">受け渡し前・カートを修正</button></div>}
+              {(draftWarning || checkoutError || changes.length > 0 || !draftReady || catalogError || !settingsReady) && <div className="rounded bg-yellow-50 p-3 text-sm" role="status">{!draftReady && <p>カートを読み込み中…</p>}<p>{draftWarning}</p>{catalogError && <p>{catalogError}</p>}{!settingsReady && <p>商品オプションを確認しています。しばらくお待ちください。</p>}{changes.map((change, i) => <p key={i}>{change}</p>)}{changes.length > 0 && checkoutPhase === 'editing' && <button onClick={refreshCart} className="ui-button ui-button--secondary mt-2 p-2">カートを最新の商品情報に更新する</button>}{checkoutError && <p className="text-red-700">{checkoutError}</p>}</div>}
+              {checkoutPhase === 'unknown' && <div className="rounded bg-orange-50 p-3 text-sm"><p>注文を保存できたか確認が必要です。</p><p>カートは変更できません。お支払いをもう一度受け取らないでください。</p><button disabled={isSubmitting} onClick={() => void checkOrderResult()} className="ui-button ui-button--secondary m-1 p-2">登録結果を確認</button><button disabled={isSubmitting || !submission} onClick={() => submission && void handleOrder(submission.paymentMethod, submission.receivedAmount)} className="ui-button ui-button--secondary m-1 p-2">注文の送信をやり直す</button></div>}
+              {checkoutPhase === 'ready' && <div className="rounded bg-blue-50 p-3 text-sm"><p>今回のお支払い金額 ¥{quote?.totalAmount.toLocaleString()} で会計します。</p><button onClick={resumePayment} className="ui-button ui-button--secondary m-1 p-2">会計を再開</button><button onClick={returnToCart} className="ui-button ui-button--secondary m-1 p-2">支払い前にカートを修正する</button></div>}
               {cartItems.length === 0 ? <div className="h-full flex flex-col items-center justify-center text-gray-300 opacity-40"><p className="font-black text-sm tracking-widest">商品を選択してください</p></div> :
                 cartItems.map((item, index) => {
                   const itemOptionPrice = item.selectedOptions?.reduce((sum, option) => sum + option.price, 0) || 0;
@@ -479,7 +479,7 @@ export default function OrderPage() {
                             })}>{selected ? '✓ ' : ''}{option.name}{option.price !== 0 ? ` (${option.price > 0 ? '+' : ''}${option.price}円)` : ''}</button>;
                           })}
                         </div>
-                        <input aria-label={`${item.productName}のメモ（この行の全数量）`} placeholder="メモ（この行の全数量）" value={item.detail || ''} disabled={!draftReady || checkoutPhase !== 'editing'} onChange={event => {
+                        <input aria-label={`${item.productName}の商品メモ（同じ商品の全個数に適用）`} placeholder="商品メモ（同じ商品の全個数に適用）" value={item.detail || ''} disabled={!draftReady || checkoutPhase !== 'editing'} onChange={event => {
                           const detail = event.target.value;
                           setCartItems(prev => prev.map((row, i) => i === index ? { ...row, detail } : row));
                         }} className="w-full rounded-lg border border-yellow-200 bg-white px-2 py-1.5 text-xs outline-none focus:ring-2 focus:ring-[#f3b928] disabled:opacity-40" />
@@ -487,11 +487,11 @@ export default function OrderPage() {
                       <div className="flex justify-between items-end">
                         <div className="flex items-center gap-2">
                           <div className="flex items-center bg-gray-100 rounded-xl overflow-hidden border border-gray-100 h-9">
-                            <button onClick={() => updateQuantity(index, item.quantity - 1)} className="w-9 h-full flex items-center justify-center font-black hover:bg-gray-200" disabled={item.quantity <= 1}>-</button>
+                            <button onClick={() => updateQuantity(index, item.quantity - 1)} className="ui-button ui-button--secondary w-9 h-full flex items-center justify-center" disabled={item.quantity <= 1}>-</button>
                             <input type="number" min="1" value={item.quantity} onChange={(e) => { const val = parseInt(e.target.value); if (!isNaN(val) && val > 0) updateQuantity(index, val); }} className="w-10 h-full text-center bg-white border-x border-gray-200 outline-none font-black text-xs text-gray-800 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" />
-                            <button onClick={() => updateQuantity(index, item.quantity + 1)} className="w-9 h-full flex items-center justify-center font-black hover:bg-gray-200">+</button>
+                            <button onClick={() => updateQuantity(index, item.quantity + 1)} className="ui-button ui-button--secondary w-9 h-full flex items-center justify-center">+</button>
                           </div>
-                          {itemOptionPrice !== 0 && <span className={`text-[10px] font-black px-2 py-1 rounded-lg ${itemOptionPrice < 0 ? 'bg-red-50 text-red-500' : 'bg-orange-50 text-orange-600'}`}>OP {itemOptionPrice}</span>}
+                          {itemOptionPrice !== 0 && <span className={`text-[10px] font-black px-2 py-1 rounded-lg ${itemOptionPrice < 0 ? 'bg-red-50 text-red-500' : 'bg-orange-50 text-orange-600'}`}>オプション {itemOptionPrice}円</span>}
                         </div>
                         <span className="text-blue-700 font-black text-xl font-mono">¥{((item.price + itemOptionPrice) * item.quantity).toLocaleString()}</span>
                       </div>
@@ -505,19 +505,19 @@ export default function OrderPage() {
               <p className="text-[10px] font-black text-gray-400 mb-2 tracking-widest">使用中の整理券</p>
               <div className="flex flex-wrap gap-2 max-h-20 overflow-y-auto overscroll-contain touch-pan-y">
                 {activeTickets.length === 0 && <span className="text-xs text-gray-400 font-bold">未提供の注文はありません</span>}
-                {ticketError && <button className="text-xs text-red-600" onClick={fetchTicketStatus}>{ticketError} 再取得</button>}
+                {ticketError && <button className="ui-button ui-button--danger text-xs" onClick={fetchTicketStatus}>{ticketError} 再読み込み</button>}
                 {[...activeOrders].sort((a, b) => Number(a.ticketNumber) - Number(b.ticketNumber)).map((order) => (
-                  <button key={order._id} disabled={returning.includes(order._id)} onClick={() => toggleModal('confirm', true, { message: order.ticketNumber + '番の整理券を返却済みにしますか？', onConfirm: async () => {
+                  <button key={order._id} disabled={returning.includes(order._id)} onClick={() => toggleModal('confirm', true, { message: order.ticketNumber + '番の商品を提供済みにしますか？調理中の一覧から消え、整理券を再利用できます。', onConfirm: async () => {
                     toggleModal('confirm', false);
                     if (returningRef.current.has(order._id)) return;
                     returningRef.current.add(order._id); setReturning([...returningRef.current]);
                     try {
                       const res = await apiFetch('/api/tickets', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ orderId: order._id, expectedRevision: order.revision || 0, status: 'completed' }) });
                       if (!res.ok) { const data = await res.json().catch(() => ({})); throw new Error(data.message || '返却結果を確認できません。'); }
-                      showToast(order.ticketNumber + '番を返却済みにしました。');
-                    } catch (error) { showToast((error instanceof Error ? error.message : '通信エラー') + ' 再取得後の状態を確認し、必要なら再試行してください。', 'error'); }
+                      showToast(order.ticketNumber + '番を提供済みにしました。');
+                    } catch (error) { showToast((error instanceof Error ? error.message : '通信エラー') + ' 再読み込み後の状態を確認し、必要なら再試行してください。', 'error'); }
                     finally { await fetchTicketStatus(); returningRef.current.delete(order._id); setReturning([...returningRef.current]); }
-                  } })} className="bg-orange-100 text-orange-700 border border-orange-300 px-3 py-1 rounded-lg text-xs font-black hover:bg-orange-200 transition disabled:opacity-50">{order.ticketNumber}</button>
+                  } })} className="ui-button ui-button--secondary text-orange-700 px-3 py-1 text-xs disabled:opacity-50">{order.ticketNumber}</button>
                 ))}
               </div>
             </div>
@@ -526,7 +526,7 @@ export default function OrderPage() {
               <div className="flex justify-between items-end mb-4"><span className="text-gray-400 font-black uppercase tracking-[0.2em] text-xs">Total</span><span className="text-4xl font-black text-gray-900 font-mono">¥{totalAmount.toLocaleString()}</span></div>
               <textarea disabled={checkoutPhase !== 'editing'} value={note} onChange={(e) => setNote(e.target.value)} className="w-full border-2 border-gray-100 p-3 text-sm rounded-2xl mb-4 h-12 outline-none focus:ring-2 focus:ring-[#f3b928] font-sans resize-none font-bold bg-gray-50" placeholder="備考（領収書など）" />
               {hasUnavailableItems && <p className="mb-2 text-center text-sm font-bold text-red-600">売り切れ商品をカートから削除してください</p>}
-              <button onClick={handleOpenPayment} disabled={!draftReady || isQuoting || checkoutPhase === 'unknown' || cartItems.length === 0 || currentTicket === '発券不可' || isSubmitting || hasUnavailableItems} className={`w-full py-5 rounded-2xl font-black text-xl shadow-xl transition-all transform active:scale-95 ${cartItems.length === 0 || currentTicket === '発券不可' || isSubmitting || hasUnavailableItems ? 'bg-gray-300 cursor-not-allowed opacity-50 text-white' : 'bg-[#f3b928] hover:bg-[#d6a11b] text-gray-900 ring-4 ring-yellow-100'}`}>{isQuoting ? '会計金額を確認中...' : isSubmitting ? '注文を送信中...' : '会計金額を確認する'}</button>
+              <button onClick={handleOpenPayment} disabled={!draftReady || isQuoting || checkoutPhase === 'unknown' || cartItems.length === 0 || currentTicket === '発券不可' || isSubmitting || hasUnavailableItems} className="ui-button ui-button--primary w-full py-5 text-xl">{isQuoting ? '会計金額を確認中…' : isSubmitting ? '注文を送信中…' : '会計金額を確認する'}</button>
             </div>
           </>
         )}

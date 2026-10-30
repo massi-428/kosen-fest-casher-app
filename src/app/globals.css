@@ -15,7 +15,52 @@
 
 body {
   font-family: var(--font-line-seed), "Yu Gothic", "Hiragino Kaku Gothic ProN", sans-serif;
+  color: #1f2937;
+  background: #f9fafb;
 }
+
+/* Shared controls: yellow for the next action, neutral for navigation,
+   red for cancelling/deleting. Status and selection colors stay separate. */
+@layer components {
+  .ui-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: .5rem;
+    min-height: 44px;
+    padding: .65rem 1rem;
+    border: 1px solid transparent;
+    border-radius: .75rem;
+    font-size: .875rem;
+    font-weight: 700;
+    line-height: 1.5;
+    text-align: center;
+    transition: background-color 150ms, border-color 150ms;
+  }
+  .ui-button--primary { background: #f3b928; color: #111827; border-color: #d6a11b; }
+  .ui-button--primary:hover { background: #e5aa18; }
+  .ui-button--secondary { background: #fff; color: #374151; border-color: #d1d5db; }
+  .ui-button--secondary:hover { background: #f3f4f6; }
+  .ui-button--danger { background: #fff1f2; color: #b91c1c; border-color: #fca5a5; }
+  .ui-button--danger:hover { background: #fee2e2; }
+  .ui-title { font-size: 1.5rem; font-weight: 700; line-height: 1.4; color: #111827; }
+  .ui-eyebrow { margin-bottom: .5rem; font-size: .875rem; font-weight: 700; color: #6b7280; }
+  .ui-help { font-size: .875rem; line-height: 1.7; color: #4b5563; }
+  .ui-notice { padding: 1rem; border: 1px solid #fcd34d; border-radius: .75rem; background: #fffbeb; color: #78350f; font-size: .875rem; line-height: 1.7; }
+  .ui-notice--success { background: #f0fdf4; border-color: #86efac; color: #166534; }
+  .ui-notice--error { background: #fef2f2; border-color: #fca5a5; color: #991b1b; }
+  .ui-steps { display: flex; gap: .5rem; margin: 1.25rem 0; padding: 0; list-style: none; }
+  .ui-steps li { flex: 1; display: flex; align-items: center; gap: .375rem; border-bottom: 3px solid #e5e7eb; padding-bottom: .75rem; color: #6b7280; font-size: .75rem; }
+  .ui-steps span { display: inline-flex; align-items: center; justify-content: center; width: 1.5rem; height: 1.5rem; flex-shrink: 0; border-radius: 50%; background: #f3f4f6; }
+  .ui-steps .is-current { color: #111827; border-color: #f3b928; font-weight: 700; }
+  .ui-steps .is-current span { background: #f3b928; }
+}
+
+button:not(:disabled), summary { cursor: pointer; }
+button:disabled, fieldset:disabled button { cursor: not-allowed; opacity: .5; }
+:where(button, a, input, select, textarea, summary):focus-visible { outline: 3px solid #2563eb; outline-offset: 3px; }
+:where(input:not([type="checkbox"]):not([type="radio"]), select, textarea) { border-color: #d1d5db; border-radius: .75rem; }
+input[type="checkbox"], input[type="radio"] { accent-color: #a16207; width: 1.1rem; height: 1.1rem; flex-shrink: 0; }
 
 /* Lock the document on POS, KDS and attendance screens. Inner content still scrolls. */
 html:has(.terminal-screen),

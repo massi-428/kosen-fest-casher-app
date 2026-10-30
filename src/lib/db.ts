@@ -35,7 +35,7 @@ async function connectToDatabase() {
   }
 
   if (Date.now() < (mongooseCache.retryAfter ?? 0)) {
-    throw new Error('データベース接続の再試行を待っています。少し待って再取得してください。');
+    throw new Error('データベース接続の再試行を待っています。少し待って再読み込みしてください。');
   }
 
   mongooseCache.conn = null;

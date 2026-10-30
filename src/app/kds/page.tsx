@@ -28,9 +28,9 @@ type OrderTicketProps = {
 
 function Pager({ page, count, onChange, label }: { page: number; count: number; onChange: (page: number) => void; label: string }) {
   return <div className="flex items-center justify-center gap-2 text-xs shrink-0">
-    <button type="button" aria-label={`${label}の前ページ`} disabled={page === 0} onClick={() => onChange(page - 1)} className="rounded border border-current/20 px-2 py-1 disabled:opacity-25">←</button>
+    <button type="button" aria-label={`${label}の前ページ`} disabled={page === 0} onClick={() => onChange(page - 1)} className="ui-button ui-button--secondary px-2 py-1 disabled:opacity-25">←</button>
     <span className="tabular-nums">{page + 1} / {count}</span>
-    <button type="button" aria-label={`${label}の次ページ`} disabled={page + 1 >= count} onClick={() => onChange(page + 1)} className="rounded border border-current/20 px-2 py-1 disabled:opacity-25">→</button>
+    <button type="button" aria-label={`${label}の次ページ`} disabled={page + 1 >= count} onClick={() => onChange(page + 1)} className="ui-button ui-button--secondary px-2 py-1 disabled:opacity-25">→</button>
   </div>;
 }
 
@@ -60,7 +60,8 @@ const OrderTicket = ({ order, onComplete, onPending, busy = false }: OrderTicket
   const count = Math.max(1, Math.ceil(lines.length / size.rows));
   const current = Math.min(page, count - 1);
   const color = seconds > 600 ? 'bg-red-600' : seconds > 300 ? 'bg-amber-500' : 'bg-blue-600';
-  return <article className="h-full min-h-0 min-w-0 flex flex-col overflow-hidden rounded-xl bg-white text-gray-900 border border-white/15 shadow-sm">
+  return <article className="relative h-full min-h-0 min-w-0 flex flex-col overflow-hidden rounded-xl bg-white text-gray-900 border border-white/15 shadow-sm">
+    <button type="button" disabled={busy} aria-busy={busy} aria-label={`整理券${order.ticketNumber}番を提供済みにする`} onClick={() => onComplete(order._id, order.ticketNumber)} className="absolute inset-0 z-10 rounded-xl cursor-pointer hover:bg-amber-500/10 active:bg-amber-500/20 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-inset focus-visible:ring-amber-400 disabled:cursor-wait disabled:bg-gray-500/20" />
     <header className={`${color} text-white flex items-center justify-between px-3 py-1.5 shrink-0 gap-2`}>
       <span className="text-3xl font-black leading-none tabular-nums">{order.ticketNumber}</span>
       <span className="text-lg font-mono font-bold">{String(Math.floor(seconds / 60)).padStart(2, '0')}:{String(seconds % 60).padStart(2, '0')}</span>
@@ -68,10 +69,10 @@ const OrderTicket = ({ order, onComplete, onPending, busy = false }: OrderTicket
     <div ref={bodyRef} className="flex-1 min-h-0 overflow-hidden mx-3 mt-1.5" aria-label={`整理券${order.ticketNumber}番の商品内容`}>
       {lines.slice(current * size.rows, (current + 1) * size.rows).map((line, i) => <p key={`${current}-${i}`} className={`text-base leading-[22px] whitespace-pre ${line.kind === 'product' ? 'font-bold text-gray-900' : line.kind === 'option' ? 'text-orange-800' : 'text-blue-800'}`}>{line.text || '\u00a0'}</p>)}
     </div>
-    <div className="h-8 flex items-center justify-center shrink-0 text-gray-500">{count > 1 ? <Pager page={current} count={count} onChange={setPage} label={`整理券${order.ticketNumber}番の内容`} /> : <span className="text-[10px]">{order.items.reduce((sum, item) => sum + item.quantity, 0)}点</span>}</div>
+    <div className="h-12 flex items-center justify-center shrink-0 text-gray-500">{count > 1 ? <div className="relative z-20"><Pager page={current} count={count} onChange={setPage} label={`整理券${order.ticketNumber}番の内容`} /></div> : <span className="text-xs">{order.items.reduce((sum, item) => sum + item.quantity, 0)}点</span>}</div>
     <footer className="grid grid-cols-[1fr_2fr] gap-1.5 p-1.5 pt-0 shrink-0">
-      <button disabled={busy} onClick={() => onPending(order._id, order.ticketNumber)} className="rounded-md bg-gray-200 text-gray-700 py-1.5 text-xs font-bold disabled:opacity-40">保留</button>
-      <button disabled={busy} onClick={() => onComplete(order._id, order.ticketNumber)} className="rounded-md bg-green-600 text-white py-1.5 text-sm font-black disabled:opacity-40">DONE</button>
+      <button type="button" disabled={busy} onClick={() => onPending(order._id, order.ticketNumber)} className="ui-button ui-button--secondary relative z-20 py-1.5 text-xs disabled:opacity-40">保留</button>
+      <span className="ui-button ui-button--primary text-xs">{busy ? '更新中…' : '押して提供済みにする'}</span>
     </footer>
   </article>;
 };
@@ -165,14 +166,14 @@ export default function KitchenDisplaySystem() {
     <div className="terminal-screen fixed inset-0 w-full h-dvh bg-gray-800 p-2 font-sans text-gray-100 flex gap-2 overflow-hidden overscroll-none">
       <div className="flex-1 flex flex-col min-w-0 min-h-0">
         <div className="flex justify-between items-center mb-2 px-2">
-          <h1 className="text-xl font-bold tracking-wider flex items-center gap-3"><span className="bg-blue-600 px-3 py-0.5 rounded text-white shadow-lg border border-blue-400 text-sm">KDS</span><span className="text-gray-300">COOKING</span><span className="bg-gray-700 px-2 py-0.5 rounded-full text-lg font-mono">{activeOrders.length}</span></h1>
+          <h1 className="text-xl font-bold flex items-center gap-3">調理画面<span className="bg-gray-700 px-2 py-0.5 rounded-full text-sm">調理中 {activeOrders.length}件</span></h1>
         </div>
         <div className="mb-2 flex shrink-0 items-center justify-between gap-3 rounded bg-gray-900 px-2 py-1 text-xs">
           <div role="status" className="min-w-0">
             <p>最終更新: {lastUpdated || '未取得'}{loading && ' ／更新中…'}</p>
             {(fetchError || operationError) && <p className="text-red-300">{fetchError || operationError}</p>}
           </div>
-          <button type="button" onClick={() => void pollerRef.current?.refresh()} disabled={loading} aria-busy={loading} aria-label="注文を再読み込み" title="再読み込み" className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-gray-600 bg-gray-700 text-gray-100 transition hover:bg-gray-600 active:scale-95 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400">
+          <button type="button" onClick={() => void pollerRef.current?.refresh()} disabled={loading} aria-busy={loading} aria-label="注文を再読み込み" title="再読み込み" className="ui-button ui-button--secondary h-11 w-11 p-0 shrink-0">
             <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5"><path d="M20 7v5h-5" /><path d="M4 17v-5h5" /><path d="M6.1 7a7 7 0 0 1 11.55-1.65L20 8M4 16l2.35 2.65A7 7 0 0 0 17.9 17" /></svg>
           </button>
         </div>
@@ -195,18 +196,18 @@ export default function KitchenDisplaySystem() {
           {summary.length === 0 && <p className="text-xs text-gray-400">{fetchError ? '取得できません' : loading ? '読み込み中…' : '未完了の注文はありません'}</p>}
         </div>
         <Pager page={currentSummaryPage} count={summaryPages} onChange={setSummaryPage} label="商品別注文数" />
-        <button ref={pendingButton} type="button" aria-expanded={pendingOpen} aria-controls="pending-orders" onClick={() => setPendingOpen(open => !open)} className="shrink-0 flex justify-between items-center gap-2 rounded-xl border border-orange-300 bg-orange-500 px-3 py-2 text-gray-950 font-black focus-visible:ring-4 focus-visible:ring-orange-200"><span>保留注文</span><span className="text-2xl tabular-nums" aria-live="polite">{pendingOrders.length}</span></button>
+        <button ref={pendingButton} type="button" aria-expanded={pendingOpen} aria-controls="pending-orders" onClick={() => setPendingOpen(open => !open)} className="ui-button ui-button--secondary shrink-0 flex justify-between items-center gap-2 px-3 py-2 focus-visible:ring-4 focus-visible:ring-orange-200"><span>保留注文</span><span className="text-2xl tabular-nums" aria-live="polite">{pendingOrders.length}</span></button>
       </aside>
       {pendingOpen && <section id="pending-orders" aria-labelledby="pending-orders-heading" className="fixed bottom-24 right-4 z-40 w-[min(24rem,calc(100vw-2rem))] max-h-[calc(100dvh-7rem)] flex flex-col rounded-2xl border border-orange-400/50 bg-gray-900 shadow-2xl">
         <div className="flex items-center justify-between gap-3 border-b border-gray-700 p-3">
           <h2 id="pending-orders-heading" className="font-bold text-orange-300">保留中の注文（{pendingOrders.length}件）</h2>
-          <button type="button" aria-label="保留中の注文を閉じる" className="rounded-lg px-3 py-2 hover:bg-gray-700 focus-visible:ring-2 focus-visible:ring-orange-300" onClick={() => { setPendingOpen(false); pendingButton.current?.focus(); }}>✕</button>
+          <button type="button" aria-label="保留中の注文を閉じる" className="ui-button ui-button--secondary px-3 py-2 focus-visible:ring-2 focus-visible:ring-orange-300" onClick={() => { setPendingOpen(false); pendingButton.current?.focus(); }}>✕</button>
         </div>
         <div className="overflow-hidden p-3 space-y-3">
           <p className="text-xs text-gray-400">整理券番号を押すと調理中に復帰します。</p>
           {(fetchError || operationError) && <p role="alert" className="text-sm text-red-300">{fetchError || operationError}</p>}
           {pendingOrders.length === 0 ? <p className="py-6 text-center text-gray-400">保留中の注文はありません。</p> : <div className="grid grid-cols-3 gap-2">
-            {pendingOrders.slice(currentPendingPage * 9, currentPendingPage * 9 + 9).map(order => <button key={order._id} type="button" disabled={busy.includes(order._id)} aria-label={`整理券${order.ticketNumber}番を調理中に復帰`} aria-busy={busy.includes(order._id)} onClick={() => void updateStatus(order._id, order.ticketNumber, 'active')} className="min-h-16 min-w-0 rounded-xl border-2 border-orange-300 bg-orange-100 px-2 py-3 text-4xl font-black tabular-nums tracking-tight text-orange-950 transition hover:bg-orange-200 active:scale-95 disabled:opacity-40 disabled:cursor-wait focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-orange-400 break-all">{order.ticketNumber}</button>)}
+            {pendingOrders.slice(currentPendingPage * 9, currentPendingPage * 9 + 9).map(order => <button key={order._id} type="button" disabled={busy.includes(order._id)} aria-label={`整理券${order.ticketNumber}番を調理中に復帰`} aria-busy={busy.includes(order._id)} onClick={() => void updateStatus(order._id, order.ticketNumber, 'active')} className="ui-button ui-button--secondary min-h-16 min-w-0 px-2 py-3 text-4xl tabular-nums tracking-tight text-orange-950 disabled:opacity-40 disabled:cursor-wait focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-orange-400 break-all">{order.ticketNumber}</button>)}
           </div>}
           <Pager page={currentPendingPage} count={pendingPages} onChange={setPendingPage} label="保留注文" />
         </div>

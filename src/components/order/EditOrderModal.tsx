@@ -95,7 +95,7 @@ export const EditOrderModal = ({ order, products, customizations, saving, error,
   return (
     <BaseModal isOpen={order !== null} onClose={onClose} closeOnOverlayClick={!saving} size="xl">
       <h3 className="text-xl font-black text-gray-800">注文内容の編集</h3>
-      <p className="mb-5 text-sm font-bold text-gray-500">整理番号 {order?.ticketNumber}／調理中・保留中の注文だけ編集できます</p>
+      <p className="mb-5 text-sm font-bold text-gray-500">整理券番号 {order?.ticketNumber}／調理中・保留中の注文だけ編集できます</p>
 
       <fieldset disabled={saving}>
       <div className="mb-5 flex gap-2">
@@ -103,7 +103,7 @@ export const EditOrderModal = ({ order, products, customizations, saving, error,
           <option value="">追加する商品を選択</option>
           {availableProducts.map((product) => <option key={product._id} value={product._id}>{product.name}（¥{product.price.toLocaleString()}）</option>)}
         </select>
-        <button type="button" onClick={addProduct} disabled={!selectedProductId} className="rounded-xl bg-[#f3b928] px-5 font-black text-gray-900 disabled:bg-gray-300">追加</button>
+        <button type="button" onClick={addProduct} disabled={!selectedProductId} className="ui-button ui-button--primary px-5">追加</button>
       </div>
 
       <div className="space-y-4">
@@ -112,10 +112,10 @@ export const EditOrderModal = ({ order, products, customizations, saving, error,
             <div className="flex items-center justify-between gap-3">
               <span className="font-black text-gray-800">{item.productName}</span>
               <div className="flex items-center gap-2">
-                <button type="button" onClick={() => updateItem(index, { quantity: Math.max(1, item.quantity - 1) })} className="h-9 w-9 rounded-lg bg-gray-100 font-black">−</button>
+                <button type="button" onClick={() => updateItem(index, { quantity: Math.max(1, item.quantity - 1) })} className="ui-button ui-button--secondary h-9 w-9">−</button>
                 <input type="number" min="1" value={item.quantity} onChange={(event) => updateItem(index, { quantity: Math.max(1, Number(event.target.value) || 1) })} className="h-9 w-16 rounded-lg border-2 text-center font-black" />
-                <button type="button" onClick={() => updateItem(index, { quantity: item.quantity + 1 })} className="h-9 w-9 rounded-lg bg-gray-100 font-black">＋</button>
-                <button type="button" onClick={() => { invalidate(); setItems((current) => current.filter((_, itemIndex) => itemIndex !== index)); }} className="ml-2 rounded-lg bg-red-50 px-3 py-2 text-sm font-bold text-red-600">削除</button>
+                <button type="button" onClick={() => updateItem(index, { quantity: item.quantity + 1 })} className="ui-button ui-button--secondary h-9 w-9">＋</button>
+                <button type="button" onClick={() => { invalidate(); setItems((current) => current.filter((_, itemIndex) => itemIndex !== index)); }} className="ui-button ui-button--danger ml-2 px-3 py-2 text-sm">削除</button>
               </div>
             </div>
             {customizations.length > 0 && (
@@ -135,14 +135,14 @@ export const EditOrderModal = ({ order, products, customizations, saving, error,
       <div className="mt-4 text-right text-2xl font-black text-gray-900">合計 ¥{total.toLocaleString()}</div>
       <div className="mt-3 rounded-xl bg-yellow-50 p-4 font-bold">
         <p>変更前 ¥{order?.totalAmount.toLocaleString()} → 変更後 ¥{total.toLocaleString()}</p>
-        <p>{delta > 0 ? '追加徴収' : delta < 0 ? '差額返金' : '精算不要'}{delta !== 0 && ' ¥' + Math.abs(delta).toLocaleString()}（{order?.paymentMethod}）</p>
-        <p className="mt-2 text-sm">まだ徴収・返金しないでください。先にサーバーで対象と金額を確定します。</p>
+        <p>{delta > 0 ? '追加のお支払い' : delta < 0 ? '差額の返金' : '追加支払い・返金は不要'}{delta !== 0 && ' ¥' + Math.abs(delta).toLocaleString()}（{order?.paymentMethod}）</p>
+        <p className="mt-2 text-sm">次の画面で変更内容を確認します。追加のお支払いや返金が必要な場合は、その画面の案内に沿って手続きしてください。</p>
       </div>
       </fieldset>
       {error && <p className="mt-3 rounded-lg bg-red-50 p-3 text-sm font-bold text-red-600">{error}</p>}
       <div className="mt-5 flex gap-3">
-        <button type="button" onClick={onClose} disabled={saving} className="flex-1 rounded-xl bg-gray-100 py-3 font-bold text-gray-700">戻る</button>
-        <button type="button" onClick={() => onSave(items, note, { requestId, expectedTotal: total, confirmed: false })} disabled={saving || items.length === 0} className="flex-[2] rounded-xl bg-green-600 py-3 font-black text-white disabled:bg-gray-300">{saving ? '保存中...' : '精算対象を確定'}</button>
+        <button type="button" onClick={onClose} disabled={saving} className="ui-button ui-button--secondary flex-1 py-3">戻る</button>
+        <button type="button" onClick={() => onSave(items, note, { requestId, expectedTotal: total, confirmed: false })} disabled={saving || items.length === 0} className="ui-button ui-button--primary flex-[2] py-3">{saving ? '確認中…' : '変更内容の確認へ進む'}</button>
       </div>
     </BaseModal>
   );

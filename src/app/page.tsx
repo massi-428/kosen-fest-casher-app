@@ -1,14 +1,11 @@
 "use client";
 
 import { useRouter } from 'next/navigation';
-import { useState } from 'react';
 import RootineLogo from '../components/RootineLogo';
 import Image from 'next/image';
 
 export default function Home() {
   const router = useRouter();
-  // 画像の読み込みエラーを検知する状態管理
-  const [imageError, setImageError] = useState(false);
 
   const goToLogin = () => {
     router.push('/login'); 
@@ -30,13 +27,13 @@ export default function Home() {
       {/* タイトルテキスト */}
       <RootineLogo className="text-8xl text-gray-800 px-3 py-2 mb-8 tracking-tighter" />
       
-      <p className="text-gray-600 mb-6 font-bold">「ログインページへ」ボタンを押すと、ログインページに移動します。</p>
+      <p className="text-gray-600 mb-6 font-bold">注文・調理・売上・勤怠を、このアプリで管理できます。</p>
 
       <button 
-        className="bg-[#f3b928] text-gray-900 px-10 py-4 rounded-2xl shadow-xl hover:bg-[#d6a11b] transition duration-300 transform hover:scale-105 font-bold text-lg"
+        className="ui-button ui-button--primary px-10 py-4 duration-300 text-lg"
         onClick={goToLogin} 
       >
-        ログインページへ
+        ログインする
       </button>
     </div>
   );

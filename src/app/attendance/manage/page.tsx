@@ -13,7 +13,7 @@ type Record = { _id: string; personalId: number; clockIn: string; clockOut: stri
 type Shift = { _id: string; personalId: number; start?: string; end?: string; festivalDay?: number; startTime?: string; endTime?: string };
 type Data = { employees: Employee[]; records: Record[]; shifts: Shift[]; totals: { _id: number; milliseconds: number }[]; notificationDay: number };
 const field = 'w-full border border-gray-300 rounded-xl px-3 py-2 bg-white text-gray-900';
-const button = 'rounded-xl bg-gray-900 text-white px-3 py-2 font-bold disabled:opacity-40';
+const button = 'ui-button ui-button--primary';
 
 function AttendanceManager({ password, initialData, onLock }: { password: string; initialData: Data; onLock: () => void }) {
   const [data, setData] = useState<Data>(initialData);
@@ -50,7 +50,7 @@ function AttendanceManager({ password, initialData, onLock }: { password: string
   return <main className="min-h-full bg-gray-50 text-gray-900 p-3 lg:p-4">
     <div className="max-w-5xl mx-auto space-y-3">
       <header className="flex flex-wrap items-center justify-between gap-4"><div><h1 className="text-xl font-black">スタッフ・シフト管理</h1><p className="text-sm text-gray-500 mt-1">スタッフ・個人ID・シフト・打刻履歴（日本時間）</p></div><div className="flex gap-2"><button type="button" onClick={onLock} className={button}>ロック</button><Link href="/attendance" className={button}>勤怠管理へ戻る</Link></div></header>
-      {error && <div role="alert" className="bg-red-50 text-red-700 rounded-xl p-2">{error} <button disabled={busy} onClick={() => run(async () => { await refresh(); })} className="underline">再取得</button></div>}
+      {error && <div role="alert" className="bg-red-50 text-red-700 rounded-xl p-2">{error} <button disabled={busy} onClick={() => run(async () => { await refresh(); })} className="ui-button ui-button--secondary">再読み込み</button></div>}
       <Toast show={Boolean(message)} message={message} title="保存完了" onClose={() => setMessage('')} />
       <div className="grid md:grid-cols-2 gap-3">
         <section className="bg-white border rounded-xl p-3 space-y-2">
@@ -60,14 +60,14 @@ function AttendanceManager({ password, initialData, onLock }: { password: string
             setName(''); setMessage(`${result.employees.length}人を登録しました。個人ID：${result.employees[0].personalId}〜${result.employees[result.employees.length - 1].personalId}`); await refresh();
           }); }}><label className="block">氏名（1行に1人）<textarea className={`${field} mt-2`} rows={3} value={name} required disabled={busy} onChange={e => setName(e.target.value)} placeholder={'山田 太郎\n佐藤 花子\n鈴木 次郎'} /></label><p className={names.length > 200 ? 'text-sm text-red-700' : 'text-sm text-gray-500'}>登録予定：{names.length}人 / 最大200人</p><button className={button} disabled={busy || !names.length || names.length > 200}>{names.length}人をまとめて登録</button></form>
           <ul className="divide-y max-h-80 overflow-auto">{currentEmployees.map(e => <li key={e._id} className="py-2 space-y-1">
-            <div className="flex items-center justify-between gap-3"><span>ID {e.personalId} · {e.name}</span><div className="flex gap-3 shrink-0"><button disabled={busy} className="text-sm underline" onClick={() => { setEditingId(e._id); setNextId(String(e.personalId)); }}>ID変更</button><button disabled={busy} className="text-sm underline text-red-700" onClick={() => {
+            <div className="flex items-center justify-between gap-3"><span>ID {e.personalId} · {e.name}</span><div className="flex gap-3 shrink-0"><button disabled={busy} className="ui-button ui-button--secondary text-sm" onClick={() => { setEditingId(e._id); setNextId(String(e.personalId)); }}>ID変更</button><button disabled={busy} className="ui-button ui-button--danger text-sm" onClick={() => {
               if (!window.confirm(`${e.name}さんを削除しますか？ 今後のシフトは削除し、打刻履歴と勤務時間は残します。`)) return;
               void run(async () => { const result = await postJson('/api/attendance', { action: 'deleteEmployee', personalId: e.personalId, employeeId: e._id }); setMessage(result.message); setEditingId(null); setShiftId(''); await refresh(); });
             }}>削除</button></div></div>
             {editingId === e._id && <form className="flex flex-wrap gap-2" onSubmit={event => { event.preventDefault(); void run(async () => {
               const result = await postJson('/api/attendance', { action: 'changeId', personalId: e.personalId, employeeId: e._id, newPersonalId: nextId });
               setMessage(result.message); setEditingId(null); setShiftId(''); await refresh();
-            }); }}><input aria-label={`${e.name}の新しい個人ID`} className={`${field} flex-1 min-w-24`} inputMode="numeric" pattern="[0-9]+" required disabled={busy} value={nextId} onChange={event => setNextId(event.target.value)} /><button className={button} disabled={busy}>保存</button><button type="button" disabled={busy} onClick={() => setEditingId(null)}>取消</button></form>}
+            }); }}><input aria-label={`${e.name}の新しい個人ID`} className={`${field} flex-1 min-w-24`} inputMode="numeric" pattern="[0-9]+" required disabled={busy} value={nextId} onChange={event => setNextId(event.target.value)} /><button className={button} disabled={busy}>保存</button><button type="button" disabled={busy} onClick={() => setEditingId(null)}>変更せずに戻る</button></form>}
           </li>)}</ul>
         </section>
         <section className="bg-white border rounded-xl p-3 space-y-2">
@@ -86,13 +86,10 @@ function AttendanceManager({ password, initialData, onLock }: { password: string
           </form>
         </section>
       </div>
-      <section className="bg-white border rounded-xl p-3 space-y-2"><h2 className="text-lg font-bold">勤務時間の合計</h2><p className="text-sm text-gray-500">全期間の退勤済み記録を集計しています。出勤中の時間は含みません。休憩時間の控除はありません。</p>
-        <ul className="grid md:grid-cols-3 gap-x-4">{data.employees.map(e => <li key={e._id} className="py-2 border-b flex justify-between gap-3 text-sm"><span>ID {e.personalId} · {e.name}{e.archivedAt ? '（削除済み）' : ''}</span><span className="font-bold shrink-0">{durationLabel(data.totals.find(t => t._id === e.personalId)?.milliseconds || 0)}</span></li>)}</ul>
-      </section>
       <ShiftGrid employees={data.employees} shifts={data.shifts} />
       <section className="bg-white border rounded-xl p-3 space-y-2"><h2 className="text-lg font-bold">登録済みシフト</h2><p className="text-sm text-gray-500">「編集」で日程・勤務時間を変更できます。</p>
         {!data.shifts.length && <p>登録されたシフトはありません。</p>}
-        <ul className="divide-y">{data.shifts.map(s => <li key={s._id} className="py-2 flex flex-wrap gap-3 justify-between items-center"><div><p className="font-bold">{s.personalId} · {staffName(s.personalId)}</p><p>{s.festivalDay ? `${s.festivalDay}日目 · ${s.startTime}〜${s.endTime}` : `旧設定：${s.start ? attendanceTime(s.start) : ''}〜${s.end ? attendanceTime(s.end) : ''}（編集して日程を選択してください）`}</p></div><div className="flex gap-3"><button className="underline" disabled={busy} onClick={() => { setEditingShift(s._id); setShiftId(String(s.personalId)); setDay(s.festivalDay || 1); setStart(s.startTime || '10:00'); setEnd(s.endTime || '16:00'); shiftForm.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }); }}>編集</button><button className="text-red-700 underline disabled:opacity-40" disabled={busy} onClick={() => {
+        <ul className="divide-y">{data.shifts.map(s => <li key={s._id} className="py-2 flex flex-wrap gap-3 justify-between items-center"><div><p className="font-bold">{s.personalId} · {staffName(s.personalId)}</p><p>{s.festivalDay ? `${s.festivalDay}日目 · ${s.startTime}〜${s.endTime}` : `旧設定：${s.start ? attendanceTime(s.start) : ''}〜${s.end ? attendanceTime(s.end) : ''}（編集して日程を選択してください）`}</p></div><div className="flex gap-3"><button className="ui-button ui-button--secondary" disabled={busy} onClick={() => { setEditingShift(s._id); setShiftId(String(s.personalId)); setDay(s.festivalDay || 1); setStart(s.startTime || '10:00'); setEnd(s.endTime || '16:00'); shiftForm.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }); }}>編集</button><button className="ui-button ui-button--danger disabled:opacity-40" disabled={busy} onClick={() => {
           if (!window.confirm('このシフトを削除しますか？')) return;
           void run(async () => { const result = await postJson('/api/attendance', { action: 'deleteShift', personalId: s.personalId, shiftId: s._id }); setMessage(result.message); await refresh(); });
         }}>削除</button></div></li>)}</ul>
@@ -104,24 +101,27 @@ function AttendanceManager({ password, initialData, onLock }: { password: string
           const url = URL.createObjectURL(await response.blob());
           const link = document.createElement('a'); link.href = url; link.download = `attendance-${attendanceToday()}.csv`;
           document.body.appendChild(link); link.click(); link.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000);
-        })}>全履歴をCSV出力</button></div>
+        })}>すべての勤務履歴をCSVで保存</button></div>
         <p className="text-sm text-gray-500">CSV：ID、出勤、退勤、出勤、退勤…（日本時間・日時順）。未退勤は空欄です。</p>
         <form ref={recordForm} hidden={!editingRecord} className="rounded-lg bg-gray-50 p-3 space-y-3" onSubmit={event => { event.preventDefault(); if (!editingRecord) return; void run(async () => {
           const result = await postJson('/api/attendance', { action: 'updateRecord', personalId: editingRecord.personalId, recordId: editingRecord._id, originalClockIn: editingRecord.clockIn, originalClockOut: editingRecord.clockOut, clockIn, clockOut });
           setEditingRecord(null); setMessage(result.message); await refresh();
         }); }}>
           <p className="font-bold">打刻履歴の編集：ID {editingRecord?.personalId}</p>
-          <label className="block">出勤（日本時間）<input type="datetime-local" step="0.001" required disabled={busy || !editingRecord} className={field} value={clockIn} onChange={e => setClockIn(e.target.value)} /></label>
-          <label className="block">退勤（日本時間・空欄で出勤中）<input type="datetime-local" step="0.001" disabled={busy || !editingRecord} className={field} value={clockOut} onChange={e => setClockOut(e.target.value)} /></label>
-          <div className="flex gap-3"><button className={button} disabled={busy}>保存</button><button type="button" disabled={busy} onClick={() => setEditingRecord(null)}>取消</button></div>
+          <label className="block">出勤（日本時間・1分刻み）<input type="datetime-local" step="60" required disabled={busy || !editingRecord} className={field} value={clockIn} onChange={e => setClockIn(e.target.value)} /></label>
+          <label className="block">退勤（日本時間・1分刻み・空欄で出勤中）<input type="datetime-local" step="60" disabled={busy || !editingRecord} className={field} value={clockOut} onChange={e => setClockOut(e.target.value)} /></label>
+          <div className="flex gap-3"><button className={button} disabled={busy}>保存</button><button type="button" disabled={busy} onClick={() => setEditingRecord(null)}>変更せずに戻る</button></div>
         </form>
         <div className="overflow-x-auto overflow-y-hidden"><table className="w-full text-left whitespace-nowrap"><thead><tr><th className="p-3">スタッフ</th><th className="p-3">出勤</th><th className="p-3">退勤</th><th className="p-3">操作</th></tr></thead><tbody>{data.records.map(r => <tr key={r._id} className="border-t"><td className="p-3">{r.personalId} · {staffName(r.personalId)}</td><td className="p-3">{attendanceTime(r.clockIn)}</td><td className="p-3">{r.clockOut ? attendanceTime(r.clockOut) : '出勤中'}</td><td className="p-3"><div className="flex gap-3">
-          <button type="button" className="underline" disabled={busy} onClick={() => { setEditingRecord(r); setClockIn(attendanceInput(r.clockIn)); setClockOut(r.clockOut ? attendanceInput(r.clockOut) : ''); requestAnimationFrame(() => recordForm.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })); }}>編集</button>
-          <button type="button" className="underline text-red-700" disabled={busy} onClick={() => {
+          <button type="button" className="ui-button ui-button--secondary" disabled={busy} onClick={() => { setEditingRecord(r); setClockIn(attendanceInput(r.clockIn).slice(0, 16)); setClockOut(r.clockOut ? attendanceInput(r.clockOut).slice(0, 16) : ''); requestAnimationFrame(() => recordForm.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })); }}>編集</button>
+          <button type="button" className="ui-button ui-button--danger" disabled={busy} onClick={() => {
             if (!window.confirm(`ID ${r.personalId} の ${attendanceTime(r.clockIn)} の打刻履歴を削除しますか？勤務時間の集計にも反映されます。この操作は取り消せません。`)) return;
             void run(async () => { const result = await postJson('/api/attendance', { action: 'deleteRecord', personalId: r.personalId, recordId: r._id, originalClockIn: r.clockIn, originalClockOut: r.clockOut }); if (editingRecord?._id === r._id) setEditingRecord(null); setMessage(result.message); await refresh(); });
           }}>削除</button>
         </div></td></tr>)}</tbody></table></div>{!data.records.length && <p>打刻履歴はありません。</p>}
+      </section>
+      <section className="bg-white border rounded-xl p-3 space-y-2"><h2 className="text-lg font-bold">勤務時間の合計</h2><p className="text-sm text-gray-500">全期間の退勤済み記録を集計しています。出勤中の時間は含みません。休憩時間は自動では差し引きません。</p>
+        <ul className="grid md:grid-cols-3 gap-x-4">{data.employees.map(e => <li key={e._id} className="py-2 border-b flex justify-between gap-3 text-sm"><span>ID {e.personalId} · {e.name}{e.archivedAt ? '（削除済み）' : ''}</span><span className="font-bold shrink-0">{durationLabel(data.totals.find(t => t._id === e.personalId)?.milliseconds || 0)}</span></li>)}</ul>
       </section>
     </div>
   </main>;
@@ -150,7 +150,7 @@ export default function AttendanceManagePage() {
     <form onSubmit={e => { e.preventDefault(); void unlock(); }} className="space-y-3">
       <label className="block text-sm font-bold">パスワード<input type="password" autoComplete="current-password" autoFocus required maxLength={256} disabled={busy} className={`${field} mt-1`} value={password} onChange={e => setPassword(e.target.value)} /></label>
       {error && <p role="alert" className="text-sm text-red-700">{error}</p>}
-      <button disabled={busy} className={`${button} w-full`}>{busy ? '確認中…' : 'ロックを解除'}</button>
+      <button disabled={busy} className={`${button} w-full`}>{busy ? '確認中…' : '管理画面を開く'}</button>
     </form>
     <Link href="/attendance" className="block text-center text-sm underline">勤怠管理へ戻る</Link>
   </section></main>;
