@@ -3,7 +3,7 @@ import connectToDatabase from '@/lib/db';
 import { getActiveStoreContext } from '@/lib/store';
 import { unauthorizedResponse } from '@/lib/auth';
 import { Employee, EmployeeCounter, AttendanceRecord, Shift, FestivalSchedule } from '@/models/Attendance';
-import { personalIdFrom, festivalShift, attendanceToday } from '@/lib/attendance';
+import { personalIdFrom, festivalShift, attendanceToday, attendanceDates, attendanceCsv } from '@/lib/attendance';
 import { isValidObjectId } from '@/lib/validation';
 import { canManageAttendance } from '@/lib/attendance-access';
 
@@ -47,6 +47,12 @@ export async function GET(request: Request) {
       return NextResponse.json(shifts.filter(s => !active.some(a => a.personalId === s.personalId)).map(s => ({ ...s, name: employees.find(e => e.personalId === s.personalId)?.name || '' })));
     }
     if (!await canManageAttendance(request, context.userId)) return reply('店舗アカウントのパスワードを入力してください', 403);
+    if (params.get('mode') === 'csv') {
+      const records = await AttendanceRecord.find({ storeId }).sort({ personalId: 1, clockIn: 1 }).lean();
+      return new Response(attendanceCsv(records.map(r => ({ personalId: Number(r.personalId), clockIn: r.clockIn, clockOut: r.clockOut }))), {
+        headers: { 'Content-Type': 'text/csv; charset=utf-8', 'Content-Disposition': `attachment; filename="attendance-${attendanceToday()}.csv"`, 'Cache-Control': 'no-store' },
+      });
+    }
     const [employees, records, shifts, totals, festival] = await Promise.all([
       Employee.find({ storeId }).sort({ personalId: 1 }),
       AttendanceRecord.find({ storeId }).sort({ clockIn: -1 }).limit(100),
@@ -88,15 +94,34 @@ export async function POST(request: Request) {
     }
     const personalId = personalIdFrom(body.personalId);
     if (!personalId) return reply('個人IDを正しく入力してください');
-    if (!['clockIn', 'clockOut', 'shift', 'updateShift', 'deleteShift', 'changeId', 'deleteEmployee'].includes(body.action)) return reply('操作が不正です');
+    if (!['clockIn', 'clockOut', 'shift', 'updateShift', 'deleteShift', 'changeId', 'deleteEmployee', 'updateRecord', 'deleteRecord'].includes(body.action)) return reply('操作が不正です');
+    const managingRecord = ['updateRecord', 'deleteRecord'].includes(body.action);
+    if (managingRecord && !isValidObjectId(body.recordId)) return reply('打刻履歴IDが不正です');
     if (body.action === 'deleteEmployee' && !isValidObjectId(body.employeeId)) return reply('スタッフIDが不正です');
     const newPersonalId = personalIdFrom(body.newPersonalId);
     if (body.action === 'changeId' && (!newPersonalId || newPersonalId >= Number.MAX_SAFE_INTEGER || !isValidObjectId(body.employeeId))) return reply('新しい個人IDを正しく入力してください');
     if (['deleteShift', 'updateShift'].includes(body.action) && !isValidObjectId(body.shiftId)) return reply('シフトIDが不正です');
     const result = await Employee.db.transaction(async session => {
       // Serialize changes for each employee, including simultaneous punches and overlapping shifts.
-      const employee = await Employee.findOneAndUpdate({ storeId, personalId, archivedAt: null, ...(body.employeeId ? { _id: body.employeeId } : {}) }, { $inc: { revision: 1 } }, { session });
+      const employee = await Employee.findOneAndUpdate({ storeId, personalId, ...(!managingRecord ? { archivedAt: null } : {}), ...(body.employeeId ? { _id: body.employeeId } : {}) }, { $inc: { revision: 1 } }, { session });
       if (!employee) return { message: 'スタッフが見つかりません', status: 404 };
+      if (managingRecord) {
+        const record = await AttendanceRecord.findOne({ _id: body.recordId, storeId, personalId }).session(session);
+        if (!record) return { message: '打刻履歴が見つかりません', status: 404 };
+        if (record.clockIn.toISOString() !== body.originalClockIn || (record.clockOut?.toISOString() ?? null) !== body.originalClockOut) return { message: '打刻履歴が変更されています。再取得してから操作してください', status: 409 };
+        if (body.action === 'deleteRecord') {
+          await AttendanceRecord.deleteOne({ _id: record._id, storeId, personalId }, { session });
+          return { message: '打刻履歴を削除しました', status: 200 };
+        }
+        const dates = attendanceDates(body.clockIn, body.clockOut);
+        if (!dates) return { message: '日時を正しく入力し、退勤を出勤より後にしてください', status: 400 };
+        if (!dates.clockOut && employee.archivedAt) return { message: '削除済みスタッフを出勤中にはできません', status: 400 };
+        const overlap = await AttendanceRecord.exists({ storeId, personalId, _id: { $ne: record._id }, ...(dates.clockOut ? { clockIn: { $lt: dates.clockOut } } : {}), $or: [{ clockOut: null }, { clockOut: { $gt: dates.clockIn } }] }).session(session);
+        if (overlap) return { message: '他の打刻履歴と時間が重なっています', status: 409 };
+        Object.assign(record, dates);
+        await record.save({ session });
+        return { message: '打刻履歴を更新しました', status: 200 };
+      }
       if (body.action === 'deleteEmployee') {
         const active = await AttendanceRecord.findOne({ storeId, personalId, clockOut: null }).session(session);
         if (active) return { message: '出勤中のスタッフは退勤してから削除してください', status: 409 };

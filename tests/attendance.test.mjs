@@ -3,6 +3,60 @@ import test from 'node:test';
 import { createLoader } from './support/load-ts.mjs';
 
 const { personalIdFrom, shiftDates, durationLabel, isShiftDue, festivalShift, attendanceToday } = createLoader()('src/lib/attendance.ts');
+const { attendanceDates, attendanceCsv } = createLoader()('src/lib/attendance.ts');
+test('record dates preserve precise Japan time and reject invalid dates and reversed ranges', () => {
+  assert.equal(attendanceDates('2026-10-30T10:17:32.123', '').clockIn.toISOString(), '2026-10-30T01:17:32.123Z');
+  assert.equal(attendanceDates('2026-10-30T10:17', null).clockOut, null);
+  for (const [start, end] of [['2026-02-30T10:00', ''], ['2026-10-30T10:00', 'bad'], ['2026-10-30T10:00', '2026-10-30T09:00'], ['2026-10-30T10:00', '2026-10-30T10:00']]) assert.equal(attendanceDates(start, end), null);
+});
+
+test('CSV groups by ID, sorts punches, pads rows and includes Japan dates and BOM', () => {
+  const csv = attendanceCsv([
+    { personalId: 2, clockIn: '2026-10-30T02:00:00Z', clockOut: null },
+    { personalId: 1, clockIn: '2026-10-30T02:00:00Z', clockOut: '2026-10-30T03:00:00Z' },
+    { personalId: 1, clockIn: '2026-10-29T23:00:00Z', clockOut: '2026-10-30T01:00:00Z' },
+  ]);
+  assert.equal(csv, '\uFEFFID,出勤,退勤,出勤,退勤\r\n1,2026-10-30 08:00:00,2026-10-30 10:00:00,2026-10-30 11:00:00,2026-10-30 12:00:00\r\n2,2026-10-30 11:00:00,,,\r\n');
+  assert.equal(attendanceCsv([]), '\uFEFFID,出勤,退勤\r\n');
+});
+
+test('record edits and deletion validate snapshots, ownership, overlap and archived staff', async () => {
+  const { post, records } = fixture();
+  const employee = await (await post({ action: 'employee', name: 'Staff' })).json();
+  const record = { _id: 'a'.repeat(24), personalId: 1, clockIn: new Date('2026-10-30T01:00:00Z'), clockOut: new Date('2026-10-30T02:00:00Z'), save: async () => {} };
+  records.push(record);
+  const payload = () => ({ personalId: 1, recordId: record._id, originalClockIn: record.clockIn.toISOString(), originalClockOut: record.clockOut?.toISOString() ?? null });
+  const update = overrides => post({ action: 'updateRecord', ...payload(), clockIn: '2026-10-30T10:15', clockOut: '2026-10-30T11:15', ...overrides });
+  assert.equal((await update({ recordId: 'invalid' })).status, 400);
+  assert.equal((await update({ recordId: 'b'.repeat(24) })).status, 404);
+  assert.equal((await update({ originalClockOut: null })).status, 409);
+  assert.equal((await update({ clockOut: '2026-10-30T09:00' })).status, 400);
+  records.push({ ...record, _id: 'c'.repeat(24), clockIn: new Date('2026-10-30T03:00:00Z'), clockOut: null });
+  assert.equal((await update({ clockOut: '' })).status, 409);
+  assert.equal((await update({ clockOut: '2026-10-30T13:00' })).status, 409);
+  records.pop();
+  assert.equal((await update({})).status, 200);
+  assert.equal(record.clockIn.toISOString(), '2026-10-30T01:15:00.000Z');
+  assert.equal((await post({ action: 'deleteEmployee', personalId: 1, employeeId: employee._id })).status, 200);
+  assert.equal((await update({ clockOut: '' })).status, 400);
+  assert.equal((await update({})).status, 200);
+  assert.equal((await post({ action: 'deleteRecord', ...payload(), originalClockIn: 'stale' })).status, 409);
+  assert.equal((await post({ action: 'deleteRecord', ...payload() })).status, 200);
+  assert.equal(records.length, 0);
+  assert.equal((await post({ action: 'deleteRecord', ...payload() })).status, 404);
+});
+
+test('CSV endpoint exports all records beyond the UI limit with attachment headers', async () => {
+  const { api, records } = fixture();
+  for (let id = 1; id <= 105; id++) records.push({ personalId: id, clockIn: new Date('2026-10-30T01:00:00Z'), clockOut: null });
+  const response = await api.GET(new Request('http://localhost/api/attendance?mode=csv'));
+  assert.equal(response.status, 200);
+  assert.match(response.headers.get('content-disposition'), /attachment/);
+  assert.match(response.headers.get('content-type'), /text\/csv/);
+  const csv = await response.text();
+  assert.equal(csv.trim().split('\r\n').length, 106);
+  assert.match(csv, /105,2026-10-30 10:00:00,/);
+});
 test('festival shifts allow exactly two days and 10–16 in half-hour steps', () => {
   assert.deepEqual(festivalShift(1, '10:00', '16:00'), { festivalDay: 1, startTime: '10:00', endTime: '16:00' });
   assert.ok(festivalShift(2, '15:30', '16:00'));
@@ -54,12 +108,14 @@ function fixture(authenticated = true, managementAccess = true) {
   const AttendanceRecord = {
     findOne: filter => {
       scoped(filter);
-      const record = records.find(r => r.personalId === filter.personalId && !r.clockOut) || null;
+      const record = records.find(r => r.personalId === filter.personalId && (filter._id ? r._id === filter._id : !r.clockOut)) || null;
       return { session: async () => record, then: resolve => resolve(record) };
     },
     create: async ([value]) => { records.push({ ...value, _id: String(records.length + 1), save: async () => {} }); },
+    exists: filter => { scoped(filter); return { session: async () => records.some(r => r.personalId === filter.personalId && r._id !== filter._id.$ne && (!filter.clockIn || r.clockIn < filter.clockIn.$lt) && (!r.clockOut || r.clockOut > filter.$or[1].clockOut.$gt)) }; },
+    deleteOne: async filter => { scoped(filter); const index = records.findIndex(r => r._id === filter._id && r.personalId === filter.personalId); if (index >= 0) records.splice(index, 1); },
     updateMany: async (filter, update) => { scoped(filter); records.filter(r => r.personalId === filter.personalId).forEach(r => Object.assign(r, update.$set)); },
-    find: filter => { scoped(filter); return { sort: () => ({ lean: async () => records.filter(r => r.clockOut === null) }) }; },
+    find: filter => { scoped(filter); return { sort: () => ({ lean: async () => records.filter(r => filter.clockOut !== null || r.clockOut === null) }) }; },
   };
   const Shift = {
     exists: filter => { scoped(filter); return { session: async () => shifts.some(s => s.personalId === filter.personalId && s.festivalDay === filter.festivalDay && s._id !== filter._id?.$ne && s.startTime < filter.startTime.$lt && s.endTime > filter.endTime.$gt) }; },
@@ -97,7 +153,8 @@ test('registration assigns sequential IDs; punches reject duplicates and stale c
 test('management reads and writes require password verification while punching stays available', async () => {
   const { api, post } = fixture(true, false);
   assert.equal((await api.GET(new Request('http://localhost/api/attendance'))).status, 403);
-  for (const action of ['employee', 'employees', 'notificationDay', 'shift', 'updateShift', 'deleteShift', 'changeId', 'deleteEmployee']) {
+  assert.equal((await api.GET(new Request('http://localhost/api/attendance?mode=csv'))).status, 403);
+  for (const action of ['employee', 'employees', 'notificationDay', 'shift', 'updateShift', 'deleteShift', 'changeId', 'deleteEmployee', 'updateRecord', 'deleteRecord']) {
     assert.equal((await post({ action, personalId: 1, name: 'Staff' })).status, 403, action);
   }
   assert.equal((await api.GET(new Request('http://localhost/api/attendance?mode=active'))).status, 200);
