@@ -27,7 +27,7 @@ const apiFetch = async (url: string, options: RequestInit = {}) => {
 // --- 型定義 ---
 type CustomOption = { name: string; price: number; };
 type OrderItem = { _id?: string; productId: string; productName: string; quantity: number; amount: number; detail?: string; selectedOptions?: CustomOption[]; };
-type Order = { cancelledAt?: string | null; settlementLock?: string | null; settlementOperations?: SettlementOperation[]; revision?: number; settlements?: Settlement[]; _id: string; ticketNumber: string; items: OrderItem[]; totalAmount: number; status: 'active' | 'pending' | 'completed' | 'cancelled'; paymentMethod?: string; receivedAmount?: number | null; changeAmount?: number | null; note?: string; createdAt: string; completedAt?: string | null; };
+type Order = { paymentCorrections?: { beforeMethod: string; afterMethod: string; createdAt: string; previousReceivedAmount?: number | null; previousChangeAmount?: number | null }[]; cancelledAt?: string | null; settlementLock?: string | null; settlementOperations?: SettlementOperation[]; revision?: number; settlements?: Settlement[]; _id: string; ticketNumber: string; items: OrderItem[]; totalAmount: number; status: 'active' | 'pending' | 'completed' | 'cancelled'; paymentMethod?: string; receivedAmount?: number | null; changeAmount?: number | null; note?: string; createdAt: string; completedAt?: string | null; };
 type Product = { _id: string; name: string; price: number; isAvailable?: boolean };
 type OrderStatusFilter = 'all' | Order['status'];
 type ModalData = Partial<
@@ -45,6 +45,29 @@ export default function HistoryPage() {
   const [total, setTotal] = useState(0);
   const [hourlyStats, setHourlyStats] = useState<number[]>(new Array(24).fill(0));
   const [loadedQuery, setLoadedQuery] = useState('');
+  const [paymentTarget, setPaymentTarget] = useState<Order | null>(null);
+  const [paymentMethods, setPaymentMethods] = useState<string[]>([]);
+  const [paymentMethod, setPaymentMethod] = useState('');
+  const [paymentError, setPaymentError] = useState('');
+  const [paymentSaving, setPaymentSaving] = useState(false);
+  const paymentLock = useRef(false);
+  const openPaymentEdit = async (order: Order) => {
+    setPaymentTarget(order); setPaymentMethod(''); setPaymentMethods([]); setPaymentError('');
+    try {
+      const settings = await requestJson('/api/settings');
+      if (!Array.isArray(settings.paymentMethods)) throw new Error('決済方法を取得できません。');
+      setPaymentMethods(settings.paymentMethods);
+    } catch { setPaymentError('決済方法を取得できません。閉じて開き直してください。'); }
+  };
+  const savePayment = async () => {
+    if (!paymentTarget || !paymentMethod || paymentLock.current) return;
+    paymentLock.current = true; setPaymentSaving(true); setPaymentError('');
+    try {
+      await postJson('/api/orders/payment', { orderId: paymentTarget._id, expectedRevision: paymentTarget.revision || 0, paymentMethod });
+      setPaymentTarget(null);
+    } catch (error) { setPaymentError((error instanceof Error ? error.message : '通信エラー') + ' 保存結果は履歴を確認してください。'); }
+    finally { await fetchOrders(); paymentLock.current = false; setPaymentSaving(false); }
+  };
   const [detailTarget, setDetailTarget] = useState<Order | null>(null);
   const [pendingSettlements, setPendingSettlements] = useState<Order[]>([]);
   const [settlementTarget, setSettlementTarget] = useState<{ orderId: string; ticketNumber: string; operation: SettlementOperation } | null>(null);
@@ -201,7 +224,23 @@ export default function HistoryPage() {
         {detailTarget && <><h3 className="mb-3 text-xl font-bold">注文詳細：{detailTarget.ticketNumber}番</h3><p>受付 {formatTime(detailTarget.createdAt)} ／ 提供 {formatTime(detailTarget.completedAt)} ／ キャンセル {formatTime(detailTarget.cancelledAt)}</p>
           <div className="my-4 space-y-3">{detailTarget.items.map((item, i) => <div key={i} className="rounded border p-3"><b>{item.productName} × {item.quantity} ／ ¥{item.amount.toLocaleString()}</b><p>オプション: {(item.selectedOptions || []).map(o => o.name + '（' + o.price + '円）').join('、') || 'なし'}</p><p>商品メモ: {item.detail || 'なし'}</p></div>)}</div>
           <p>注文備考: {detailTarget.note || 'なし'}</p><p>支払い方法: {detailTarget.paymentMethod || '未記録'} ／ 合計 ¥{detailTarget.totalAmount.toLocaleString()}</p><p>最初のお預かり: {detailTarget.receivedAmount ?? '未記録'} ／ 最初のお釣り: {detailTarget.changeAmount ?? '未記録'}</p>
+          {!!detailTarget.paymentCorrections?.length && <><h4 className="mt-4 font-bold">決済方法の変更履歴</h4>{detailTarget.paymentCorrections.map((entry, index) => <p key={index}>{formatTime(entry.createdAt)} {entry.beforeMethod || '未記録'} → {entry.afterMethod} ／ 変更前のお預かり {entry.previousReceivedAmount ?? '未記録'} ／ お釣り {entry.previousChangeAmount ?? '未記録'}</p>)}</>}
           <h4 className="mt-4 font-bold">追加支払い・返金の履歴</h4>{!(detailTarget.settlements || []).length && <p>追加支払い・返金の履歴なし</p>}{(detailTarget.settlements || []).map(op => <p key={op.requestId}>{formatTime(op.createdAt)} {op.kind === 'cancel' ? '注文キャンセル' : '追加支払い・返金'} {op.delta}円（{op.paymentMethod}）変更前 {op.beforeAmount}円 → 変更後 {op.afterAmount}円 ／ お預かり {op.receivedAmount ?? '—'} ／ お釣り {op.changeAmount ?? '—'}</p>)}<button className="ui-button ui-button--secondary mt-4 p-3" onClick={() => setDetailTarget(null)}>閉じる</button></>}
+      </BaseModal>
+      <BaseModal isOpen={paymentTarget !== null} onClose={() => { if (!paymentSaving) setPaymentTarget(null); }} closeOnOverlayClick={!paymentSaving}>
+        <h3 className="ui-title mb-3">決済方法を修正</h3>
+        <p className="mb-3">整理券 {paymentTarget?.ticketNumber}番 ／ 受付時の決済方法：{paymentTarget?.paymentMethod || '未記録'}</p>
+        <p className="ui-help mb-4">実際に受け取った決済方法に訂正します。追加決済・返金は行いません。追加精算の決済方法は変わりません。以前のお預かり・お釣りは変更履歴に保存し、現在の記録から外します。</p>
+        <label htmlFor="correct-payment-method" className="block mb-2 font-bold">正しい決済方法</label>
+        <select id="correct-payment-method" value={paymentMethod} disabled={paymentSaving} onChange={e => setPaymentMethod(e.target.value)} className="w-full rounded border p-3">
+          <option value="">選択してください</option>
+          {paymentMethods.map(method => <option key={method} value={method} disabled={method === paymentTarget?.paymentMethod}>{method}</option>)}
+        </select>
+        {paymentError && <p role="alert" className="mt-3 text-red-700">{paymentError}</p>}
+        <div className="mt-5 flex gap-3">
+          <button className="ui-button ui-button--secondary" disabled={paymentSaving} onClick={() => setPaymentTarget(null)}>戻る</button>
+          <button className="ui-button ui-button--primary" disabled={paymentSaving || !paymentMethod} onClick={() => void savePayment()}>{paymentSaving ? '保存中…' : '決済方法を修正する'}</button>
+        </div>
       </BaseModal>
       {/* モーダル */}
       <SharedResultModal isOpen={modals.result} title={modalData.title || ''} message={modalData.message || ''} type={modalData.type || 'success'} onClose={() => toggleModal('result', false)} />
@@ -308,7 +347,8 @@ export default function HistoryPage() {
                 </td>
                 <td className="px-6 py-4 text-right">
                   <button className="ui-button ui-button--secondary mb-2" onClick={() => setDetailTarget(order)}>詳細</button>
-                  <fieldset disabled={!!order.settlementLock || busy.includes(order._id) || isCancelling || isSavingEdit} className="flex justify-end gap-2">
+                  <fieldset disabled={!!order.settlementLock || busy.includes(order._id) || isCancelling || isSavingEdit || paymentSaving} className="flex justify-end gap-2">
+                    {order.status !== 'cancelled' && <button onClick={() => void openPaymentEdit(order)} className="ui-button ui-button--secondary px-3 py-1.5">決済方法を修正</button>}
                     {order.status === 'completed' && <button onClick={() => handleToggleStatus(order)} className="ui-button ui-button--secondary px-3 py-1.5">調理中に戻す</button>}
                     {(order.status === 'active' || order.status === 'pending') && <button onClick={() => { setEditTarget(order); setEditError(''); void fetchEditReferences(); }} className="ui-button ui-button--secondary px-3 py-1.5">内容編集</button>}
                     {order.status === 'active' && <button onClick={() => handleToggleStatus(order)} className="ui-button ui-button--secondary px-3 py-1.5">提供済みにする</button>}

@@ -3,6 +3,7 @@
 import { useRef, useState, useEffect, useCallback } from 'react';
 import { summarizeKitchenOrders, wrapKitchenText } from '@/lib/kds-display';
 import { startBrowserPolling } from '@/lib/polling';
+import styles from './kds.module.css';
 
 const apiFetch = async (url: string, options: RequestInit = {}) => {
   try {
@@ -46,10 +47,16 @@ const OrderTicket = ({ order, onComplete, onPending, busy = false }: OrderTicket
   useEffect(() => {
     const element = bodyRef.current;
     if (!element) return;
-    const observer = new ResizeObserver(([entry]) => {
-      setSize({ columns: Math.max(1, Math.floor((entry.contentRect.width - 4) / 17)), rows: Math.max(1, Math.floor(entry.contentRect.height / 22)) });
-    });
-    observer.observe(element); return () => observer.disconnect();
+    const measure = () => {
+      const style = getComputedStyle(element);
+      const fontSize = parseFloat(style.fontSize);
+      const lineHeight = parseFloat(style.lineHeight);
+      setSize({ columns: Math.max(1, Math.floor((element.clientWidth - 4) / (fontSize * 1.06))), rows: Math.max(1, Math.floor(element.clientHeight / lineHeight)) });
+    };
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    window.addEventListener('resize', measure);
+    return () => { observer.disconnect(); window.removeEventListener('resize', measure); };
   }, []);
   const lines = order.items.flatMap(item => [
     ...wrapKitchenText(`${item.productName} ×${item.quantity}`, size.columns).map(text => ({ text, kind: 'product' })),
@@ -63,11 +70,11 @@ const OrderTicket = ({ order, onComplete, onPending, busy = false }: OrderTicket
   return <article className="relative h-full min-h-0 min-w-0 flex flex-col overflow-hidden rounded-xl bg-white text-gray-900 border border-white/15 shadow-sm">
     <button type="button" disabled={busy} aria-busy={busy} aria-label={`整理券${order.ticketNumber}番を提供済みにする`} onClick={() => onComplete(order._id, order.ticketNumber)} className="absolute inset-0 z-10 rounded-xl cursor-pointer hover:bg-amber-500/10 active:bg-amber-500/20 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-inset focus-visible:ring-amber-400 disabled:cursor-wait disabled:bg-gray-500/20" />
     <header className={`${color} text-white flex items-center justify-between px-3 py-1.5 shrink-0 gap-2`}>
-      <span className="text-3xl font-black leading-none tabular-nums">{order.ticketNumber}</span>
-      <span className="text-lg font-mono font-bold">{String(Math.floor(seconds / 60)).padStart(2, '0')}:{String(seconds % 60).padStart(2, '0')}</span>
+      <span className={`${styles.ticketNumber} font-black leading-none tabular-nums`}>{order.ticketNumber}</span>
+      <span className={`${styles.timer} font-mono font-bold`}>{String(Math.floor(seconds / 60)).padStart(2, '0')}:{String(seconds % 60).padStart(2, '0')}</span>
     </header>
-    <div ref={bodyRef} className="flex-1 min-h-0 overflow-hidden mx-3 mt-1.5" aria-label={`整理券${order.ticketNumber}番の商品内容`}>
-      {lines.slice(current * size.rows, (current + 1) * size.rows).map((line, i) => <p key={`${current}-${i}`} className={`text-base leading-[22px] whitespace-pre ${line.kind === 'product' ? 'font-bold text-gray-900' : line.kind === 'option' ? 'text-orange-800' : 'text-blue-800'}`}>{line.text || '\u00a0'}</p>)}
+    <div ref={bodyRef} className={`${styles.ticketBody} flex-1 min-h-0 overflow-hidden mx-3 mt-1.5`} aria-label={`整理券${order.ticketNumber}番の商品内容`}>
+      {lines.slice(current * size.rows, (current + 1) * size.rows).map((line, i) => <p key={`${current}-${i}`} className={`whitespace-pre ${line.kind === 'product' ? 'font-bold text-gray-900' : line.kind === 'option' ? 'text-orange-800' : 'text-blue-800'}`}>{line.text || '\u00a0'}</p>)}
     </div>
     <div className="h-12 flex items-center justify-center shrink-0 text-gray-500">{count > 1 ? <div className="relative z-20"><Pager page={current} count={count} onChange={setPage} label={`整理券${order.ticketNumber}番の内容`} /></div> : <span className="text-xs">{order.items.reduce((sum, item) => sum + item.quantity, 0)}点</span>}</div>
     <footer className="grid grid-cols-[1fr_2fr] gap-1.5 p-1.5 pt-0 shrink-0">
@@ -163,7 +170,7 @@ export default function KitchenDisplaySystem() {
   const currentPendingPage = Math.min(pendingPage, pendingPages - 1);
 
   return (
-    <div className="terminal-screen fixed inset-0 w-full h-dvh bg-gray-800 p-2 font-sans text-gray-100 flex gap-2 overflow-hidden overscroll-none">
+    <div className={`${styles.screen} terminal-screen fixed inset-0 w-full h-dvh bg-gray-800 p-2 font-sans text-gray-100 flex gap-2 overflow-hidden overscroll-none`}>
       <div className="flex-1 flex flex-col min-w-0 min-h-0">
         <div className="flex justify-between items-center mb-2 px-2">
           <h1 className="text-xl font-bold flex items-center gap-3">調理画面<span className="bg-gray-700 px-2 py-0.5 rounded-full text-sm">調理中 {activeOrders.length}件</span></h1>
@@ -184,7 +191,7 @@ export default function KitchenDisplaySystem() {
         </div>
         <div className="pt-2 shrink-0"><Pager page={currentOrderPage} count={orderPages} onChange={setOrderPage} label="調理中の注文" /></div>
       </div>
-      <aside className="w-48 xl:w-64 shrink-0 min-h-0 rounded-xl bg-gray-900 border border-gray-700 flex flex-col p-3 gap-2" aria-label="商品別注文数量">
+      <aside className={`${styles.summary} w-48 xl:w-64 shrink-0 min-h-0 rounded-xl bg-gray-900 border border-gray-700 flex flex-col p-3 gap-2`} aria-label="商品別注文数量">
         <h2 className="font-bold text-lg">商品別注文数</h2>
         <p className="text-xs text-gray-400">全ページの未完了注文を集計</p>
         <div className="grid grid-cols-3 gap-1 text-center text-[10px] text-gray-400"><span>調理中</span><span>保留</span><span>合計</span></div>

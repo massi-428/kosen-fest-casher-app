@@ -1,0 +1,10 @@
+.ticketNumber { font-size: clamp(1.875rem, 3vw, 3.25rem); }
+.timer { font-size: clamp(1.125rem, 1.8vw, 1.75rem); }
+.ticketBody {
+  font-size: clamp(1rem, 1.7vw, 1.75rem);
+  line-height: 1.4;
+}
+.summary p[title] { font-size: clamp(.875rem, 1.25vw, 1.25rem); }
+.summary :global(.tabular-nums) { font-size: clamp(1.5rem, 2vw, 2rem); }
+.screen :global(.text-xs) { font-size: clamp(.75rem, 1vw, 1rem); }
+.screen :global(.text-\[10px\]) { font-size: clamp(.625rem, .9vw, .875rem); }

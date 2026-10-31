@@ -21,6 +21,7 @@ const OrderSchema = new Schema({
   totalAmount: { type: Number, required: true },
   status: { type: String, enum: ['active', 'completed', 'pending', 'cancelled'], default: 'active' },
   paymentMethod: { type: String, required: false },
+  paymentCorrections: [{ beforeMethod: String, afterMethod: String, previousReceivedAmount: Number, previousChangeAmount: Number, changedBy: String, createdAt: Date }],
   receivedAmount: { type: Number, required: false, default: null },
   changeAmount: { type: Number, required: false, default: null },
   note: { type: String, required: false, default: '' },
