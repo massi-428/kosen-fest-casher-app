@@ -2,14 +2,16 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { requestJson } from '@/lib/client-api';
-import { attendanceTime, isShiftDue } from '@/lib/attendance';
+import { attendanceTime } from '@/lib/attendance';
+import { queueShiftReminders, type ShiftReminderEvent } from '@/lib/shift-reminders';
 import { Toast } from './Toast';
 
-type Reminder = { _id: string; personalId: number; name: string; start: string };
+type Reminder = ShiftReminderEvent;
 
 export function ShiftReminder({ storeId, paused }: { storeId: string; paused: boolean }) {
   const [reminders, setReminders] = useState<Reminder[]>([]);
   const [seen, setSeen] = useState<Set<string>>(new Set());
+  const [pending, setPending] = useState<Reminder[]>([]);
   const seenRef = useRef(seen);
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => { const timer = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(timer); }, []);
@@ -31,14 +33,21 @@ export function ShiftReminder({ storeId, paused }: { storeId: string; paused: bo
     document.addEventListener('visibilitychange', poll);
     return () => { stopped = true; clearInterval(timer); document.removeEventListener('visibilitychange', poll); };
   }, [storeId]);
-  const current = reminders.find(r => !seen.has(r._id) && isShiftDue(r.start, now));
-  const currentId = current?._id;
+  useEffect(() => {
+    setPending(previous => queueShiftReminders(previous, reminders, seen, now));
+  }, [reminders, seen, now]);
+  const current = pending[0];
+  const batch = current ? pending.filter(r => r.kind === current.kind && r.start === current.start).slice(0, 5) : [];
+  const currentIds = JSON.stringify(batch.map(r => r._id));
   const close = useCallback(() => {
-    if (!currentId) return;
-    const next = new Set(seenRef.current).add(currentId);
+    const ids: string[] = JSON.parse(currentIds);
+    if (!ids.length) return;
+    const next = new Set([...seenRef.current, ...ids]);
     seenRef.current = next; setSeen(next);
+    setPending(previous => previous.filter(r => !next.has(r._id)));
     try { sessionStorage.setItem(`shift-reminders:${storeId}`, JSON.stringify([...next].slice(-500))); } catch { /* Storage is optional. */ }
-  }, [currentId, storeId]);
+  }, [currentIds, storeId]);
   if (paused || !current) return null;
-  return <Toast key={current._id} show title="出勤予定時刻です" message={`ID ${current.personalId} · ${current.name}さん\n出勤予定 ${attendanceTime(current.start)}`} onClose={close} />;
+  const label = current.kind === 'clockOut' ? '退勤' : '出勤';
+  return <Toast key={currentIds} show title={`${label}予定時刻です`} message={`${label}予定 ${attendanceTime(current.start)}\n${batch.map(r => `ID ${r.personalId} · ${r.name}さん`).join('\n')}`} onClose={close} />;
 }

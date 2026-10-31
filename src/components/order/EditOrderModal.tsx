@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { BaseModal } from '@/components/BaseModal';
 
 type CustomOption = { name: string; price: number };
@@ -27,6 +27,8 @@ export type EditableOrder = {
 export type EditSettlement = { requestId: string; expectedTotal: number; confirmed: boolean; receivedAmount?: number };
 
 type Props = {
+  paymentEditor?: ReactNode;
+  canEditItems?: boolean;
   cashCalculationEnabled?: boolean;
   cashPaymentMethod?: string;
   order: EditableOrder | null;
@@ -38,8 +40,9 @@ type Props = {
   onSave: (items: EditableOrderItem[], note: string, settlement: EditSettlement) => void;
 };
 
-export const EditOrderModal = ({ order, products, customizations, saving, error, onClose, onSave }: Props) => {
+export const EditOrderModal = ({ order, products, customizations, saving, error, onClose, onSave, paymentEditor, canEditItems = true }: Props) => {
   const [items, setItems] = useState<EditableOrderItem[]>([]);
+  const initializedOrder = useRef<string | null>(null);
 
 
   const [requestId, setRequestId] = useState('');
@@ -47,7 +50,10 @@ export const EditOrderModal = ({ order, products, customizations, saving, error,
   const [selectedProductId, setSelectedProductId] = useState('');
 
   useEffect(() => {
-    if (!order) return;
+    if (!order) { initializedOrder.current = null; return; }
+    // A payment correction refreshes the revision without discarding the item draft.
+    if (initializedOrder.current === order._id) return;
+    initializedOrder.current = order._id;
     setItems(order.items.map((item) => ({ ...item, basePrice: item.amount / item.quantity - (item.selectedOptions || []).reduce((sum, o) => sum + o.price, 0), selectedOptions: item.selectedOptions || [] })));
     setRequestId(crypto.randomUUID());
     setNote(order.note || '');
@@ -95,9 +101,11 @@ export const EditOrderModal = ({ order, products, customizations, saving, error,
   return (
     <BaseModal isOpen={order !== null} onClose={onClose} closeOnOverlayClick={!saving} size="xl">
       <h3 className="text-xl font-black text-gray-800">注文内容の編集</h3>
-      <p className="mb-5 text-sm font-bold text-gray-500">整理券番号 {order?.ticketNumber}／調理中・保留中の注文だけ編集できます</p>
+      <p className="mb-5 text-sm font-bold text-gray-500">整理券番号 {order?.ticketNumber}／{canEditItems ? '商品・備考・決済方法を編集できます' : '提供済みのため決済方法のみ編集できます'}</p>
 
-      <fieldset disabled={saving}>
+      {paymentEditor}
+
+      <fieldset disabled={saving || !canEditItems}>
       <div className="mb-5 flex gap-2">
         <select value={selectedProductId} onChange={(event) => setSelectedProductId(event.target.value)} className="min-w-0 flex-1 rounded-xl border-2 p-3 font-bold">
           <option value="">追加する商品を選択</option>
@@ -142,7 +150,7 @@ export const EditOrderModal = ({ order, products, customizations, saving, error,
       {error && <p className="mt-3 rounded-lg bg-red-50 p-3 text-sm font-bold text-red-600">{error}</p>}
       <div className="mt-5 flex gap-3">
         <button type="button" onClick={onClose} disabled={saving} className="ui-button ui-button--secondary flex-1 py-3">戻る</button>
-        <button type="button" onClick={() => onSave(items, note, { requestId, expectedTotal: total, confirmed: false })} disabled={saving || items.length === 0} className="ui-button ui-button--primary flex-[2] py-3">{saving ? '確認中…' : '変更内容の確認へ進む'}</button>
+        {canEditItems && <button type="button" onClick={() => onSave(items, note, { requestId, expectedTotal: total, confirmed: false })} disabled={saving || items.length === 0} className="ui-button ui-button--primary flex-[2] py-3">{saving ? '確認中…' : '変更内容の確認へ進む'}</button>}
       </div>
     </BaseModal>
   );

@@ -38,13 +38,16 @@ export async function GET(request: Request) {
       const festival = await FestivalSchedule.findById(storeId);
       if (!festival?.notificationDay || festival.notificationDate !== today) return NextResponse.json([]);
       const scheduled = await Shift.find({ storeId, festivalDay: festival.notificationDay }).sort({ startTime: 1 }).lean();
-      const shifts = scheduled.map(s => ({ ...s, personalId: Number(s.personalId), start: new Date(`${today}T${s.startTime}:00+09:00`) })).filter(s => s.start.getTime() >= now.getTime() - 60000 && s.start.getTime() <= now.getTime() + 15 * 60000);
+      const shifts = scheduled.flatMap(s => [
+        { _id: `${s._id}:${today}:clockIn`, personalId: Number(s.personalId), kind: 'clockIn', start: new Date(`${today}T${s.startTime}:00+09:00`) },
+        { _id: `${s._id}:${today}:clockOut`, personalId: Number(s.personalId), kind: 'clockOut', start: new Date(`${today}T${s.endTime}:00+09:00`) },
+      ]).filter(s => s.start.getTime() >= now.getTime() - 60000 && s.start.getTime() <= now.getTime() + 15 * 60000);
       const ids = shifts.map(s => s.personalId);
       const [employees, active] = await Promise.all([
-        Employee.find({ storeId, personalId: { $in: ids } }).lean(),
+        Employee.find({ storeId, personalId: { $in: ids }, archivedAt: null }).lean(),
         AttendanceRecord.find({ storeId, personalId: { $in: ids }, clockOut: null }).lean(),
       ]);
-      return NextResponse.json(shifts.filter(s => !active.some(a => a.personalId === s.personalId)).map(s => ({ ...s, name: employees.find(e => e.personalId === s.personalId)?.name || '' })));
+      return NextResponse.json(shifts.filter(s => employees.some(e => e.personalId === s.personalId) && (s.kind === 'clockOut' ? active.some(a => a.personalId === s.personalId) : !active.some(a => a.personalId === s.personalId))).map(s => ({ ...s, name: employees.find(e => e.personalId === s.personalId)?.name || '' })));
     }
     if (!await canManageAttendance(request, context.userId)) return reply('店舗アカウントのパスワードを入力してください', 403);
     if (params.get('mode') === 'csv') {

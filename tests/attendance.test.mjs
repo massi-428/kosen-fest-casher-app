@@ -218,9 +218,9 @@ test('unauthenticated reads and mutations are denied', async () => {
   assert.equal((await post({ action: 'employee', name: 'Staff' })).status, 401);
 });
 
-test('reminders preload upcoming shifts and include the current start minute, excluding clocked-in staff', async () => {
+test('reminders notify unpunched arrivals and working departures with separate daily IDs', async () => {
   const startTime = new Date(Date.now() + 9 * 3600000).toISOString().slice(11, 16);
-  const shifts = [{ _id: 's1', personalId: 1, startTime }, { _id: 's2', personalId: 2, startTime }];
+  const shifts = [{ _id: 's1', personalId: 1, startTime, endTime: startTime }, { _id: 's2', personalId: 2, startTime, endTime: startTime }];
   const api = createLoader({
     '@/lib/db': async () => {},
     '@/lib/store': { getActiveStoreContext: async () => ({ storeId: 'store-a' }) },
@@ -241,9 +241,14 @@ test('reminders preload upcoming shifts and include the current start minute, ex
   })('src/app/api/attendance/route.ts');
   const result = await api.GET(new Request('http://localhost/api/attendance?mode=reminders'));
   const reminders = await result.json();
-  assert.equal(reminders.length, 1);
+  assert.equal(reminders.length, 2);
   assert.equal(reminders[0].name, 'A');
   assert.equal(reminders[0].start, new Date(`${attendanceToday()}T${startTime}:00+09:00`).toISOString());
+  assert.equal(reminders[0].kind, 'clockIn');
+  assert.equal(reminders[0]._id, `s1:${attendanceToday()}:clockIn`);
+  assert.equal(reminders[1].name, 'B');
+  assert.equal(reminders[1].kind, 'clockOut');
+  assert.equal(reminders[1]._id, `s2:${attendanceToday()}:clockOut`);
 });
 
 test('staff deletion rejects active attendance, preserves history and reserves the ID', async () => {

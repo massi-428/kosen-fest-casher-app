@@ -45,26 +45,29 @@ export default function HistoryPage() {
   const [total, setTotal] = useState(0);
   const [hourlyStats, setHourlyStats] = useState<number[]>(new Array(24).fill(0));
   const [loadedQuery, setLoadedQuery] = useState('');
-  const [paymentTarget, setPaymentTarget] = useState<Order | null>(null);
   const [paymentMethods, setPaymentMethods] = useState<string[]>([]);
   const [paymentMethod, setPaymentMethod] = useState('');
   const [paymentError, setPaymentError] = useState('');
+  const [paymentMessage, setPaymentMessage] = useState('');
+  const paymentSequence = useRef(0);
   const [paymentSaving, setPaymentSaving] = useState(false);
   const paymentLock = useRef(false);
   const openPaymentEdit = async (order: Order) => {
-    setPaymentTarget(order); setPaymentMethod(''); setPaymentMethods([]); setPaymentError('');
+    const sequence = ++paymentSequence.current;
+    setEditTarget(order); setEditError(''); void fetchEditReferences();
+    setPaymentMethod(''); setPaymentMethods([]); setPaymentError(''); setPaymentMessage('');
     try {
       const settings = await requestJson('/api/settings');
       if (!Array.isArray(settings.paymentMethods)) throw new Error('決済方法を取得できません。');
-      setPaymentMethods(settings.paymentMethods);
-    } catch { setPaymentError('決済方法を取得できません。閉じて開き直してください。'); }
+      if (sequence === paymentSequence.current) setPaymentMethods(settings.paymentMethods);
+    } catch { if (sequence === paymentSequence.current) setPaymentError('決済方法を取得できません。閉じて開き直してください。'); }
   };
   const savePayment = async () => {
-    if (!paymentTarget || !paymentMethod || paymentLock.current) return;
-    paymentLock.current = true; setPaymentSaving(true); setPaymentError('');
+    if (!editTarget || !paymentMethod || paymentLock.current) return;
+    paymentLock.current = true; setPaymentSaving(true); setPaymentError(''); setPaymentMessage('');
     try {
-      await postJson('/api/orders/payment', { orderId: paymentTarget._id, expectedRevision: paymentTarget.revision || 0, paymentMethod });
-      setPaymentTarget(null);
+      const data = await postJson('/api/orders/payment', { orderId: editTarget._id, expectedRevision: editTarget.revision || 0, paymentMethod });
+      setEditTarget(data.order); setPaymentMethod(''); setPaymentMessage('決済方法を保存しました。');
     } catch (error) { setPaymentError((error instanceof Error ? error.message : '通信エラー') + ' 保存結果は履歴を確認してください。'); }
     finally { await fetchOrders(); paymentLock.current = false; setPaymentSaving(false); }
   };
@@ -227,21 +230,6 @@ export default function HistoryPage() {
           {!!detailTarget.paymentCorrections?.length && <><h4 className="mt-4 font-bold">決済方法の変更履歴</h4>{detailTarget.paymentCorrections.map((entry, index) => <p key={index}>{formatTime(entry.createdAt)} {entry.beforeMethod || '未記録'} → {entry.afterMethod} ／ 変更前のお預かり {entry.previousReceivedAmount ?? '未記録'} ／ お釣り {entry.previousChangeAmount ?? '未記録'}</p>)}</>}
           <h4 className="mt-4 font-bold">追加支払い・返金の履歴</h4>{!(detailTarget.settlements || []).length && <p>追加支払い・返金の履歴なし</p>}{(detailTarget.settlements || []).map(op => <p key={op.requestId}>{formatTime(op.createdAt)} {op.kind === 'cancel' ? '注文キャンセル' : '追加支払い・返金'} {op.delta}円（{op.paymentMethod}）変更前 {op.beforeAmount}円 → 変更後 {op.afterAmount}円 ／ お預かり {op.receivedAmount ?? '—'} ／ お釣り {op.changeAmount ?? '—'}</p>)}<button className="ui-button ui-button--secondary mt-4 p-3" onClick={() => setDetailTarget(null)}>閉じる</button></>}
       </BaseModal>
-      <BaseModal isOpen={paymentTarget !== null} onClose={() => { if (!paymentSaving) setPaymentTarget(null); }} closeOnOverlayClick={!paymentSaving}>
-        <h3 className="ui-title mb-3">決済方法を修正</h3>
-        <p className="mb-3">整理券 {paymentTarget?.ticketNumber}番 ／ 受付時の決済方法：{paymentTarget?.paymentMethod || '未記録'}</p>
-        <p className="ui-help mb-4">実際に受け取った決済方法に訂正します。追加決済・返金は行いません。追加精算の決済方法は変わりません。以前のお預かり・お釣りは変更履歴に保存し、現在の記録から外します。</p>
-        <label htmlFor="correct-payment-method" className="block mb-2 font-bold">正しい決済方法</label>
-        <select id="correct-payment-method" value={paymentMethod} disabled={paymentSaving} onChange={e => setPaymentMethod(e.target.value)} className="w-full rounded border p-3">
-          <option value="">選択してください</option>
-          {paymentMethods.map(method => <option key={method} value={method} disabled={method === paymentTarget?.paymentMethod}>{method}</option>)}
-        </select>
-        {paymentError && <p role="alert" className="mt-3 text-red-700">{paymentError}</p>}
-        <div className="mt-5 flex gap-3">
-          <button className="ui-button ui-button--secondary" disabled={paymentSaving} onClick={() => setPaymentTarget(null)}>戻る</button>
-          <button className="ui-button ui-button--primary" disabled={paymentSaving || !paymentMethod} onClick={() => void savePayment()}>{paymentSaving ? '保存中…' : '決済方法を修正する'}</button>
-        </div>
-      </BaseModal>
       {/* モーダル */}
       <SharedResultModal isOpen={modals.result} title={modalData.title || ''} message={modalData.message || ''} type={modalData.type || 'success'} onClose={() => toggleModal('result', false)} />
       <SharedConfirmModal isOpen={modals.confirm} message={modalData.message || ''} onConfirm={modalData.onConfirm || (() => {})} onCancel={() => toggleModal('confirm', false)} confirmLabel={modalData.confirmLabel} cancelLabel={modalData.cancelLabel} />
@@ -257,7 +245,20 @@ export default function HistoryPage() {
           <button type="button" onClick={() => void submitCancelOrder()} disabled={isCancelling || !cancelPassword.trim()} className="ui-button ui-button--primary flex-1">{isCancelling ? '確認中…' : '返金・確認画面へ進む'}</button>
         </div>
       </BaseModal>
-      <EditOrderModal {...cashSettings} order={editTarget} products={products} customizations={customizations} saving={isSavingEdit} error={editError} onClose={() => { if (!isSavingEdit) { setEditTarget(null); setEditError(''); } }} onSave={(items, note, settlement) => void saveOrderEdit(items, note, settlement)} />
+      <EditOrderModal {...cashSettings} canEditItems={editTarget?.status !== 'completed'} paymentEditor={<section className="my-5 rounded-xl border p-4">        <h4 className="mb-3 font-bold">受付時の決済方法</h4>
+        <p className="mb-3">整理券 {editTarget?.ticketNumber}番 ／ 受付時の決済方法：{editTarget?.paymentMethod || '未記録'}</p>
+        <p className="ui-help mb-4">実際に受け取った決済方法に訂正します。追加決済・返金は行いません。追加精算の決済方法は変わりません。以前のお預かり・お釣りは変更履歴に保存し、現在の記録から外します。</p>
+        <label htmlFor="correct-payment-method" className="block mb-2 font-bold">正しい決済方法</label>
+        <select id="correct-payment-method" value={paymentMethod} disabled={paymentSaving || isSavingEdit} onChange={e => setPaymentMethod(e.target.value)} className="w-full rounded border p-3">
+          <option value="">選択してください</option>
+          {paymentMethods.map(method => <option key={method} value={method} disabled={method === editTarget?.paymentMethod}>{method}</option>)}
+        </select>
+        {paymentMessage && <p role="status" className="mt-3 text-green-700">{paymentMessage}</p>}
+        {paymentError && <p role="alert" className="mt-3 text-red-700">{paymentError}</p>}
+        <div className="mt-5 flex gap-3">
+          <button className="ui-button ui-button--primary" disabled={paymentSaving || isSavingEdit || !paymentMethod} onClick={() => void savePayment()}>{paymentSaving ? '保存中…' : '決済方法を修正する'}</button>
+        </div>
+</section>} order={editTarget} products={products} customizations={customizations} saving={isSavingEdit || paymentSaving} error={editError} onClose={() => { if (!isSavingEdit && !paymentSaving) { paymentSequence.current += 1; setEditTarget(null); setEditError(''); } }} onSave={(items, note, settlement) => void saveOrderEdit(items, note, settlement)} />
 
       <div className="flex flex-wrap justify-between items-center gap-4 mb-6 bg-white p-4 rounded-xl border border-gray-200">
         <div><h1 className="ui-title">注文履歴</h1><p className="ui-help mt-1">注文の確認・変更・キャンセルができます。</p></div>
@@ -348,9 +349,8 @@ export default function HistoryPage() {
                 <td className="px-6 py-4 text-right">
                   <button className="ui-button ui-button--secondary mb-2" onClick={() => setDetailTarget(order)}>詳細</button>
                   <fieldset disabled={!!order.settlementLock || busy.includes(order._id) || isCancelling || isSavingEdit || paymentSaving} className="flex justify-end gap-2">
-                    {order.status !== 'cancelled' && <button onClick={() => void openPaymentEdit(order)} className="ui-button ui-button--secondary px-3 py-1.5">決済方法を修正</button>}
                     {order.status === 'completed' && <button onClick={() => handleToggleStatus(order)} className="ui-button ui-button--secondary px-3 py-1.5">調理中に戻す</button>}
-                    {(order.status === 'active' || order.status === 'pending') && <button onClick={() => { setEditTarget(order); setEditError(''); void fetchEditReferences(); }} className="ui-button ui-button--secondary px-3 py-1.5">内容編集</button>}
+                    {order.status !== 'cancelled' && <button onClick={() => void openPaymentEdit(order)} className="ui-button ui-button--secondary px-3 py-1.5">内容編集</button>}
                     {order.status === 'active' && <button onClick={() => handleToggleStatus(order)} className="ui-button ui-button--secondary px-3 py-1.5">提供済みにする</button>}
                     {order.status !== 'cancelled' && <button onClick={() => handleCancelOrder(order)} className="ui-button ui-button--danger px-3 py-1.5">注文をキャンセル</button>}
                   </fieldset>

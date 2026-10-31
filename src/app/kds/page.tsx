@@ -4,6 +4,7 @@ import { useRef, useState, useEffect, useCallback } from 'react';
 import { summarizeKitchenOrders, wrapKitchenText } from '@/lib/kds-display';
 import { startBrowserPolling } from '@/lib/polling';
 import styles from './kds.module.css';
+import { createKitchenOrderTracker, createKitchenSoundPlayer } from '@/lib/kds-sound';
 
 const apiFetch = async (url: string, options: RequestInit = {}) => {
   try {
@@ -84,6 +85,26 @@ const OrderTicket = ({ order, onComplete, onPending, busy = false }: OrderTicket
   </article>;
 };
 export default function KitchenDisplaySystem() {
+  const soundPlayer = useRef<ReturnType<typeof createKitchenSoundPlayer> | null>(null);
+  const orderTracker = useRef<ReturnType<typeof createKitchenOrderTracker> | null>(null);
+  const [soundEnabled, setSoundEnabled] = useState(false);
+  const [soundLoading, setSoundLoading] = useState(false);
+  const [soundError, setSoundError] = useState('');
+  useEffect(() => {
+    const player = createKitchenSoundPlayer();
+    soundPlayer.current = player;
+    return () => { player.dispose(); soundPlayer.current = null; };
+  }, []);
+  const toggleSound = async () => {
+    const player = soundPlayer.current;
+    if (!player || soundLoading) return;
+    setSoundError('');
+    if (soundEnabled) { player.disable(); setSoundEnabled(false); return; }
+    setSoundLoading(true);
+    try { await player.enable(); setSoundEnabled(true); }
+    catch (error) { setSoundError(error instanceof Error ? error.message : '通知音を有効にできません。'); }
+    finally { setSoundLoading(false); }
+  };
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [orderPage, setOrderPage] = useState(0);
@@ -127,6 +148,13 @@ export default function KitchenDisplaySystem() {
         const uniqueOrdersMap = new Map<string, Order>();
         data.forEach(order => { if (order._id) uniqueOrdersMap.set(String(order._id), order); });
         const uniqueOrders = Array.from(uniqueOrdersMap.values()) as Order[];
+        orderTracker.current ??= createKitchenOrderTracker();
+        const newOrders = orderTracker.current(uniqueOrders);
+        try { newOrders.forEach(() => soundPlayer.current?.play()); }
+        catch (error) {
+          soundPlayer.current?.disable(); setSoundEnabled(false);
+          setSoundError(error instanceof Error ? error.message : '通知音を再度有効にしてください。');
+        }
         setOrders(uniqueOrders.filter(o => o.status === 'active' || o.status === 'pending').sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()));
       }
       return true;
@@ -172,9 +200,11 @@ export default function KitchenDisplaySystem() {
   return (
     <div className={`${styles.screen} terminal-screen fixed inset-0 w-full h-dvh bg-gray-800 p-2 font-sans text-gray-100 flex gap-2 overflow-hidden overscroll-none`}>
       <div className="flex-1 flex flex-col min-w-0 min-h-0">
-        <div className="flex justify-between items-center mb-2 px-2">
+        <div className="flex flex-wrap justify-between items-center gap-2 mb-2 px-2">
           <h1 className="text-xl font-bold flex items-center gap-3">調理画面<span className="bg-gray-700 px-2 py-0.5 rounded-full text-sm">調理中 {activeOrders.length}件</span></h1>
+          <button type="button" onClick={() => void toggleSound()} disabled={soundLoading} aria-pressed={soundEnabled} className="ui-button ui-button--secondary">{soundLoading ? '音源を読み込み中…' : soundEnabled ? '通知音：ON' : '通知音を有効にする'}</button>
         </div>
+        {soundError && <p role="alert" className="mb-2 text-sm text-red-300">{soundError}</p>}
         <div className="mb-2 flex shrink-0 items-center justify-between gap-3 rounded bg-gray-900 px-2 py-1 text-xs">
           <div role="status" className="min-w-0">
             <p>最終更新: {lastUpdated || '未取得'}{loading && ' ／更新中…'}</p>
