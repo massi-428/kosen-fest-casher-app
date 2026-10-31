@@ -8,6 +8,21 @@ const history = load('src/lib/history-query.ts');
 const item = { productId: 'one', productName: '商品', price: 500, quantity: 2, detail: 'メモ', selectedOptions: [{ name: '追加', price: 50 }] };
 const draft = { version: 1, userId: 'user-a', storeId: 'store-a', requestId: 'operation-a', items: [item], note: '注文備考', phase: 'editing', quote: null, submission: null };
 
+test('stalled response bodies time out even with a caller signal and the next request succeeds', async () => {
+  const original = globalThis.fetch;
+  let signal;
+  try {
+    globalThis.fetch = async (_url, options) => {
+      signal = options.signal;
+      return { ok: true, json: () => new Promise(() => {}) };
+    };
+    await assert.rejects(api.requestJson('/api/orders', { signal: new AbortController().signal }, 10), /タイムアウト/);
+    assert.equal(signal.aborted, true);
+    globalThis.fetch = async () => Response.json({ order: { ticketNumber: '2' } });
+    assert.equal((await api.requestJson('/api/orders')).order.ticketNumber, '2');
+  } finally { globalThis.fetch = original; }
+});
+
 test('cart preserves notes/options and isolates users and stores', () => {
   assert.deepEqual(cart.parseCartDraft(JSON.stringify(draft), 'user-a', 'store-a'), draft);
   assert.notEqual(cart.cartKey('user-a', 'store-a'), cart.cartKey('user-b', 'store-a'));

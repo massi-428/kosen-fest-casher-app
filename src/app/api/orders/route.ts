@@ -19,13 +19,19 @@ const DEFAULT_MAX_ITEMS_PER_ORDER = 10;
 const DUPLICATE_KEY_ERROR_CODE = 11000;
 const OPEN_STATUSES = ['active', 'pending'];
 
-const issueTicketCandidate = async (storeId: string, maxTicketNumber: number, session: ClientSession) => {
-  const counter = await TicketCounter.findOneAndUpdate(
-    { storeId },
-    [{ $set: { storeId, lastIssuedNumber: { $let: { vars: { nextNumber: { $add: [{ $ifNull: ['$lastIssuedNumber', 0] }, 1] } }, in: { $cond: [{ $gt: ['$$nextNumber', maxTicketNumber] }, 1, '$$nextNumber'] } } } } }],
-    { new: true, upsert: true, setDefaultsOnInsert: true, session },
-  );
-  return String(counter.lastIssuedNumber);
+const issueTicketCandidate = async (storeId: string, maxTicketNumber: number, lostTickets: Set<number>, session: ClientSession) => {
+  // withOpenBusiness already holds the counter write lock for this transaction.
+  const counter = await TicketCounter.findOne({ storeId }).session(session);
+  const occupied = await Order.distinct('ticketNumber', { storeId, status: { $in: OPEN_STATUSES } }).session(session);
+  const unavailable = new Set([...lostTickets, ...occupied.map(Number)]);
+  let candidate = Number(counter?.lastIssuedNumber) || 0;
+  for (let i = 0; i < maxTicketNumber; i += 1) {
+    candidate = candidate >= maxTicketNumber ? 1 : candidate + 1;
+    if (unavailable.has(candidate)) continue;
+    await TicketCounter.updateOne({ storeId }, { $set: { lastIssuedNumber: candidate } }, { session });
+    return String(candidate);
+  }
+  return null;
 };
 
 const isDuplicateKeyError = (error: unknown) => typeof error === 'object' && error !== null && 'code' in error && error.code === DUPLICATE_KEY_ERROR_CODE;
@@ -100,12 +106,14 @@ export async function POST(request: Request) {
     const setting = await Setting.findOneAndUpdate({ storeId, key: 'app_config' }, { $setOnInsert: { ownerId: context.userId, storeId, key: 'app_config' } }, { new: true, upsert: true, setDefaultsOnInsert: true });
     const maxItemsPerOrder = Number.isInteger(setting?.maxItemsPerOrder) ? setting.maxItemsPerOrder : DEFAULT_MAX_ITEMS_PER_ORDER;
 
-    const actualPending = await Order.aggregate([
-      { $match: { storeId, status: { $in: OPEN_STATUSES } } },
-      { $unwind: '$items' },
-      { $group: { _id: null, count: { $sum: '$items.quantity' } } },
-    ]);
-    await Setting.updateOne({ storeId, key: 'app_config', pendingItemCount: { $exists: false } }, { $set: { pendingItemCount: actualPending[0]?.count || 0 } });
+    if (setting.pendingItemCount == null) {
+      const actualPending = await Order.aggregate([
+        { $match: { storeId, status: { $in: OPEN_STATUSES } } },
+        { $unwind: '$items' },
+        { $group: { _id: null, count: { $sum: '$items.quantity' } } },
+      ]);
+      await Setting.updateOne({ storeId, key: 'app_config', pendingItemCount: { $exists: false } }, { $set: { pendingItemCount: actualPending[0]?.count || 0 } });
+    }
     const maxPendingItemCount = Number.isInteger(setting?.maxPendingItemCount) ? setting.maxPendingItemCount : DEFAULT_MAX_PENDING_ITEM_COUNT;
     const reservation = await Setting.findOneAndUpdate(
       { storeId, key: 'app_config' },
@@ -139,13 +147,12 @@ export async function POST(request: Request) {
       try {
         const order = await withOpenBusiness(storeId, async (session, closedAt) => {
           if (closedAt && new Date(quote.createdAt) <= closedAt) throw new BusinessClosedError('〆作業前の会計です。カートに戻り、会計金額を再確認してください。');
-          const candidate = await issueTicketCandidate(storeId, maxTicketNumber, session);
-          if (lostTickets.has(Number(candidate))) return null;
-          if (await Order.exists({ storeId, ticketNumber: candidate, status: { $in: OPEN_STATUSES } }).session(session)) return null;
+          const candidate = await issueTicketCandidate(storeId, maxTicketNumber, lostTickets, session);
+          if (candidate === null) return null;
           const [created] = await Order.create([{ ownerId: context.userId, storeId, requestId, ticketNumber: candidate, items: safeItems, totalAmount, status: 'active', paymentMethod: body.paymentMethod, receivedAmount, changeAmount, note: quote.note || '' }], { session });
           return created;
         });
-        if (!order) continue;
+        if (!order) break;
         reservedItemCount = 0;
         return orderSuccess(order, false, capacityWarning);
       } catch (error) {

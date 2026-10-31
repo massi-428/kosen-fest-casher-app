@@ -112,7 +112,8 @@ test('orders are issued ticket numbers on the server', () => {
 
   assert.match(ticketCounterModel, /'ticket_counters'/);
   assert.match(orderModel, /partialFilterExpression:\s*\{\s*status:\s*\{\s*\$in:\s*\['active',\s*'pending'\]\s*\}/);
-  assert.match(ordersRoute, /TicketCounter\.findOneAndUpdate/);
+  assert.match(ordersRoute, /TicketCounter\.updateOne/);
+  assert.match(ordersRoute, /withOpenBusiness\(storeId/);
   assert.match(ordersRoute, /issueTicketCandidate/);
   assert.match(ordersRoute, /DUPLICATE_KEY_ERROR_CODE/);
   assert.match(ordersRoute, /Setting\.findOneAndUpdate/);

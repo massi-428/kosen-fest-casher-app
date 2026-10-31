@@ -9,19 +9,25 @@ import CheckoutQuote from '@/models/CheckoutQuote';
 import { priceEditedItems } from '@/lib/order-accounting';
 import TicketCounter from '@/models/TicketCounter';
 import { businessDate } from '@/lib/business-day';
+import { ensureCheckoutQuoteIndex } from '@/lib/checkout-quote-index';
 
 export async function POST(request: Request) {
+  let stage = 'connection';
   try {
     await connectToDatabase();
+    stage = 'store';
     const context = await getActiveStoreContext(request);
     if (!context) return unauthorizedResponse();
     const counter = await TicketCounter.findOne({ storeId: context.storeId });
     if (counter?.closedDate === businessDate()) return NextResponse.json({ message: '本日の営業は締め切りました。翌日から注文を受け付けます。' }, { status: 409 });
     // Do not accept a first quote before its request-ID uniqueness index is ready.
-    await CheckoutQuote.init();
+    stage = 'quote-index';
+    await ensureCheckoutQuoteIndex();
+    stage = 'validation';
     const body = await request.json();
     if (!isNonEmptyString(body.requestId, 100)) return badRequest('操作IDが正しくありません。');
     const filter = { storeId: context.storeId, userId: context.userId, requestId: body.requestId };
+    stage = 'existing-quote';
     const existing = await CheckoutQuote.findOne(filter);
     if (existing) {
       if (counter?.closedAt && new Date(existing.createdAt) <= counter.closedAt) return NextResponse.json({ message: '〆作業前の会計です。カートに戻って会計をやり直してください。' }, { status: 409 });
@@ -30,19 +36,37 @@ export async function POST(request: Request) {
     if (!Array.isArray(body.items) || !body.items.length || body.items.length > 100 || !isOptionalString(body.note, 500)) return badRequest('カートの内容が正しくありません。');
     const ids = body.items.map((item: { productId?: unknown }) => item?.productId);
     if (ids.some((id: unknown) => !isValidObjectId(id))) return badRequest('商品が削除されています。カートから取り除いてください。');
+    stage = 'catalog';
     const [products, settings] = await Promise.all([Product.find({ storeId: context.storeId, _id: { $in: ids } }), Setting.findOne({ storeId: context.storeId, key: 'app_config' })]);
     for (const id of ids) {
       const product = products.find(p => String(p._id) === id);
       if (!product) return badRequest('商品が削除されています。カートから取り除いてください。');
       if (product.isAvailable === false) return badRequest(product.name + ' は売り切れです。カートから取り除いてください。');
     }
-    for (const item of body.items) for (const name of item.selectedOptionNames || []) if (!(settings?.customizations || []).some((o: { name: string }) => o.name === name)) return badRequest(name + ' は削除されたオプションです。詳細設定を見直してください。');
+    for (const item of body.items) {
+      if (item.selectedOptionNames != null && !Array.isArray(item.selectedOptionNames)) return badRequest('オプションが正しくありません。');
+      for (const name of item.selectedOptionNames || []) if (!(settings?.customizations || []).some((o: { name: string }) => o.name === name)) return badRequest(name + ' は削除されたオプションです。詳細設定を見直してください。');
+    }
     let items;
     try { items = priceEditedItems(body.items.map((item: { productId: string; quantity: number; detail?: string; selectedOptionNames?: string[] }) => ({ productId: item.productId, quantity: item.quantity, detail: item.detail || '', selectedOptionNames: item.selectedOptionNames || [] })), [], products, settings?.customizations || []); }
     catch (error) { return badRequest(error instanceof Error ? error.message : '商品の状態を確認してください。'); }
     const totalAmount = items.reduce((sum, item) => sum + item.amount, 0);
     if (!Number.isSafeInteger(totalAmount) || totalAmount < 0 || totalAmount > 10000000) return badRequest('合計金額が範囲外です。');
-    const quote = await CheckoutQuote.findOneAndUpdate(filter, { $setOnInsert: { ...filter, items, totalAmount, note: body.note || '', paymentMethods: settings?.paymentMethods || [], cashCalculationEnabled: settings?.cashCalculationEnabled === true, cashPaymentMethod: settings?.cashPaymentMethod || '現金' } }, { upsert: true, new: true });
+    stage = 'save-quote';
+    let quote;
+    try {
+      quote = await CheckoutQuote.findOneAndUpdate(filter, { $setOnInsert: { ...filter, items, totalAmount, note: body.note || '', paymentMethods: settings?.paymentMethods || [], cashCalculationEnabled: settings?.cashCalculationEnabled === true, cashPaymentMethod: settings?.cashPaymentMethod || '現金' } }, { upsert: true, new: true });
+    } catch (error) {
+      if (!(error && typeof error === 'object' && 'code' in error && error.code === 11000)) throw error;
+      // A simultaneous retry may have inserted the same immutable quote first.
+      quote = await CheckoutQuote.findOne(filter);
+      if (!quote) throw error;
+    }
     return NextResponse.json(quote);
-  } catch { return NextResponse.json({ message: '会計金額を確認できません。まだ受け渡しをせず、再試行してください。' }, { status: 500 }); }
+  } catch (error) {
+    // Do not log the cart, credentials, database URI, or raw database messages.
+    const failure = error && typeof error === 'object' ? error : {};
+    console.error('会計金額確認エラー', { stage, name: 'name' in failure ? failure.name : 'UnknownError', code: 'code' in failure ? failure.code : undefined });
+    return NextResponse.json({ message: '会計金額を確認できません。まだ受け渡しをせず、再試行してください。', errorCode: 'QUOTE_' + stage.toUpperCase().replaceAll('-', '_') }, { status: 500 });
+  }
 }
