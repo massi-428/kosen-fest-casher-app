@@ -60,7 +60,7 @@ const OrderTicket = ({ order, onComplete, onPending, busy = false }: OrderTicket
     return () => { observer.disconnect(); window.removeEventListener('resize', measure); };
   }, []);
   const lines = order.items.flatMap(item => [
-    ...wrapKitchenText(`${item.productName} ×${item.quantity}`, size.columns).map(text => ({ text, kind: 'product' })),
+    ...wrapKitchenText(`${item.productName}${item.quantity === 1 ? '' : ` ×${item.quantity}`}`, size.columns).map(text => ({ text, kind: 'product' })),
     ...(item.selectedOptions?.length ? wrapKitchenText(item.selectedOptions.map(option => option.name).join(' / '), size.columns).map(text => ({ text, kind: 'option' })) : []),
     ...(item.detail ? wrapKitchenText(`メモ: ${item.detail}`, size.columns).map(text => ({ text, kind: 'note' })) : []),
   ]);
