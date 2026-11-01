@@ -1,7 +1,7 @@
 "use client";
 
-import { useRef, useState, useEffect, useCallback } from 'react';
-import { summarizeKitchenOrders, wrapKitchenText } from '@/lib/kds-display';
+import { useRef, useState, useEffect, useLayoutEffect, useCallback } from 'react';
+import { summarizeKitchenOrders } from '@/lib/kds-display';
 import { startBrowserPolling } from '@/lib/polling';
 import styles from './kds.module.css';
 import { createKitchenOrderTracker, createKitchenSoundPlayer } from '@/lib/kds-sound';
@@ -38,35 +38,48 @@ function Pager({ page, count, onChange, label }: { page: number; count: number; 
 
 const OrderTicket = ({ order, onComplete, onPending, busy = false }: OrderTicketProps) => {
   const [seconds, setSeconds] = useState(0);
-  const [page, setPage] = useState(0);
-  const [size, setSize] = useState({ columns: 12, rows: 3 });
+  const contentRef = useRef<HTMLDivElement>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const update = () => setSeconds(Math.max(0, Math.floor((Date.now() - new Date(order.createdAt).getTime()) / 1000)));
     update(); const timer = setInterval(update, 1000); return () => clearInterval(timer);
   }, [order.createdAt]);
-  useEffect(() => {
+  useLayoutEffect(() => {
     const element = bodyRef.current;
-    if (!element) return;
+    const content = contentRef.current;
+    if (!element || !content) return;
+    let disposed = false;
     const measure = () => {
-      const style = getComputedStyle(element);
-      const fontSize = parseFloat(style.fontSize);
-      const lineHeight = parseFloat(style.lineHeight);
-      setSize({ columns: Math.max(1, Math.floor((element.clientWidth - 4) / (fontSize * 1.06))), rows: Math.max(1, Math.floor(element.clientHeight / lineHeight)) });
+      if (disposed || element.clientWidth <= 0 || element.clientHeight <= 0) return;
+      const maximum = parseFloat(getComputedStyle(element).fontSize);
+      const fits = (fontSize: number) => {
+        content.style.fontSize = fontSize + 'px';
+        return content.getBoundingClientRect().height <= element.clientHeight - 1 && content.scrollWidth <= element.clientWidth;
+      };
+      if (fits(maximum)) return;
+      // Measure real browser wrapping, including Japanese, options and multiline notes.
+      let low = 0;
+      let high = maximum;
+      for (let i = 0; i < 14; i++) {
+        const middle = (low + high) / 2;
+        if (fits(middle)) low = middle;
+        else high = middle;
+      }
+      content.style.fontSize = low + 'px';
     };
+    measure();
     const observer = new ResizeObserver(measure);
     observer.observe(element);
     window.addEventListener('resize', measure);
-    return () => { observer.disconnect(); window.removeEventListener('resize', measure); };
-  }, []);
+    void document.fonts.ready.then(measure);
+    return () => { disposed = true; observer.disconnect(); window.removeEventListener('resize', measure); };
+  }, [order.items, order.note]);
   const lines = order.items.flatMap(item => [
-    ...wrapKitchenText(`${item.productName}${item.quantity === 1 ? '' : ` ×${item.quantity}`}`, size.columns).map(text => ({ text, kind: 'product' })),
-    ...(item.selectedOptions?.length ? wrapKitchenText(item.selectedOptions.map(option => option.name).join(' / '), size.columns).map(text => ({ text, kind: 'option' })) : []),
-    ...(item.detail ? wrapKitchenText(`メモ: ${item.detail}`, size.columns).map(text => ({ text, kind: 'note' })) : []),
+    { text: item.productName + (item.quantity === 1 ? '' : ' ×' + item.quantity), kind: 'product' },
+    ...(item.selectedOptions?.length ? [{ text: item.selectedOptions.map(option => option.name).join(' / '), kind: 'option' }] : []),
+    ...(item.detail ? [{ text: 'メモ: ' + item.detail, kind: 'note' }] : []),
   ]);
-  if (order.note) lines.push(...wrapKitchenText(`注文メモ: ${order.note}`, size.columns).map(text => ({ text, kind: 'note' })));
-  const count = Math.max(1, Math.ceil(lines.length / size.rows));
-  const current = Math.min(page, count - 1);
+  if (order.note) lines.push({ text: '注文メモ: ' + order.note, kind: 'note' });
   const color = seconds > 600 ? 'bg-red-600' : seconds > 300 ? 'bg-amber-500' : 'bg-blue-600';
   return <article className="relative h-full min-h-0 min-w-0 flex flex-col overflow-hidden rounded-xl bg-white text-gray-900 border border-white/15 shadow-sm">
     <button type="button" disabled={busy} aria-busy={busy} aria-label={`整理券${order.ticketNumber}番を提供済みにする`} onClick={() => onComplete(order._id, order.ticketNumber)} className="absolute inset-0 z-10 rounded-xl cursor-pointer hover:bg-amber-500/10 active:bg-amber-500/20 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-inset focus-visible:ring-amber-400 disabled:cursor-wait disabled:bg-gray-500/20" />
@@ -75,9 +88,11 @@ const OrderTicket = ({ order, onComplete, onPending, busy = false }: OrderTicket
       <span className={`${styles.timer} font-mono font-bold`}>{String(Math.floor(seconds / 60)).padStart(2, '0')}:{String(seconds % 60).padStart(2, '0')}</span>
     </header>
     <div ref={bodyRef} className={`${styles.ticketBody} flex-1 min-h-0 overflow-hidden mx-3 mt-1.5`} aria-label={`整理券${order.ticketNumber}番の商品内容`}>
-      {lines.slice(current * size.rows, (current + 1) * size.rows).map((line, i) => <p key={`${current}-${i}`} className={`whitespace-pre ${line.kind === 'product' ? 'font-bold text-gray-900' : line.kind === 'option' ? 'text-orange-800' : 'text-blue-800'}`}>{line.text || '\u00a0'}</p>)}
+      <div ref={contentRef} className={styles.ticketContent}>
+        {lines.map((line, i) => <p key={i} className={line.kind === 'product' ? 'font-bold text-gray-900' : line.kind === 'option' ? 'text-orange-800' : 'text-blue-800'}>{line.text || '\u00a0'}</p>)}
+      </div>
     </div>
-    <div className="h-12 flex items-center justify-center shrink-0 text-gray-500">{count > 1 ? <div className="relative z-20"><Pager page={current} count={count} onChange={setPage} label={`整理券${order.ticketNumber}番の内容`} /></div> : <span className="text-xs">{order.items.reduce((sum, item) => sum + item.quantity, 0)}点</span>}</div>
+    <div className="py-1 flex items-center justify-center shrink-0 text-gray-500"><span className="text-xs">{order.items.reduce((sum, item) => sum + item.quantity, 0)}点</span></div>
     <footer className="grid grid-cols-[1fr_2fr] gap-1.5 p-1.5 pt-0 shrink-0">
       <button type="button" disabled={busy} onClick={() => onPending(order._id, order.ticketNumber)} className="ui-button ui-button--secondary relative z-20 py-1.5 text-xs disabled:opacity-40">保留</button>
       <span className="ui-button ui-button--primary text-xs">{busy ? '更新中…' : '押して提供済みにする'}</span>
