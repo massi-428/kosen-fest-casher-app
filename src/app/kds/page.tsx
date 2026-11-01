@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState, useEffect, useLayoutEffect, useCallback } from 'react';
-import { summarizeKitchenOrders } from '@/lib/kds-display';
+import { summarizeKitchenOrders, splitKitchenOrder } from '@/lib/kds-display';
 import { startBrowserPolling } from '@/lib/polling';
 import styles from './kds.module.css';
 import { createKitchenOrderTracker, createKitchenSoundPlayer } from '@/lib/kds-sound';
@@ -21,7 +21,12 @@ type CustomOption = { name: string; price: number; };
 type OrderItem = { productId?: string; productName: string; price: number; quantity: number; amount: number; detail?: string; selectedOptions?: CustomOption[]; };
 type Order = { revision?: number; _id: string; ticketNumber: string; items: OrderItem[]; totalAmount: number; status: 'active' | 'completed' | 'pending'; createdAt: string; note?: string; };
 type OrderStatus = Order['status'];
+type TicketLine = { text: string; kind: string };
 type OrderTicketProps = {
+  lines: TicketLine[];
+  part: number;
+  parts: number;
+  onMeasure: (columns: number, rows: number) => void;
   order: Order;
   onComplete: (orderId: string, ticketNumber: string) => void;
   onPending: (orderId: string, ticketNumber: string) => void;
@@ -36,9 +41,9 @@ function Pager({ page, count, onChange, label }: { page: number; count: number; 
   </div>;
 }
 
-const OrderTicket = ({ order, onComplete, onPending, busy = false }: OrderTicketProps) => {
+const OrderTicket = ({ order, lines, part, parts, onMeasure, onComplete, onPending, busy = false }: OrderTicketProps) => {
   const [seconds, setSeconds] = useState(0);
-  const contentRef = useRef<HTMLDivElement>(null);
+
   const bodyRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const update = () => setSeconds(Math.max(0, Math.floor((Date.now() - new Date(order.createdAt).getTime()) / 1000)));
@@ -46,26 +51,14 @@ const OrderTicket = ({ order, onComplete, onPending, busy = false }: OrderTicket
   }, [order.createdAt]);
   useLayoutEffect(() => {
     const element = bodyRef.current;
-    const content = contentRef.current;
-    if (!element || !content) return;
+    if (!element) return;
     let disposed = false;
     const measure = () => {
       if (disposed || element.clientWidth <= 0 || element.clientHeight <= 0) return;
-      const maximum = parseFloat(getComputedStyle(element).fontSize);
-      const fits = (fontSize: number) => {
-        content.style.fontSize = fontSize + 'px';
-        return content.getBoundingClientRect().height <= element.clientHeight - 1 && content.scrollWidth <= element.clientWidth;
-      };
-      if (fits(maximum)) return;
-      // Measure real browser wrapping, including Japanese, options and multiline notes.
-      let low = 0;
-      let high = maximum;
-      for (let i = 0; i < 14; i++) {
-        const middle = (low + high) / 2;
-        if (fits(middle)) low = middle;
-        else high = middle;
-      }
-      content.style.fontSize = low + 'px';
+      const style = getComputedStyle(element);
+      const fontSize = parseFloat(style.fontSize);
+      // Reserve a little horizontal space for glyphs wider than a Japanese character.
+      onMeasure(Math.max(1, Math.floor((element.clientWidth - 4) / (fontSize * 1.1))), Math.max(1, Math.floor(element.clientHeight / (fontSize * 1.3))));
     };
     measure();
     const observer = new ResizeObserver(measure);
@@ -73,13 +66,7 @@ const OrderTicket = ({ order, onComplete, onPending, busy = false }: OrderTicket
     window.addEventListener('resize', measure);
     void document.fonts.ready.then(measure);
     return () => { disposed = true; observer.disconnect(); window.removeEventListener('resize', measure); };
-  }, [order.items, order.note]);
-  const lines = order.items.flatMap(item => [
-    { text: item.productName + (item.quantity === 1 ? '' : ' ×' + item.quantity), kind: 'product' },
-    ...(item.selectedOptions?.length ? [{ text: item.selectedOptions.map(option => option.name).join(' / '), kind: 'option' }] : []),
-    ...(item.detail ? [{ text: 'メモ: ' + item.detail, kind: 'note' }] : []),
-  ]);
-  if (order.note) lines.push({ text: '注文メモ: ' + order.note, kind: 'note' });
+  }, [onMeasure]);
   const color = seconds > 600 ? 'bg-red-600' : seconds > 300 ? 'bg-amber-500' : 'bg-blue-600';
   return <article className="relative h-full min-h-0 min-w-0 flex flex-col overflow-hidden rounded-xl bg-white text-gray-900 border border-white/15 shadow-sm">
     <button type="button" disabled={busy} aria-busy={busy} aria-label={`整理券${order.ticketNumber}番を提供済みにする`} onClick={() => onComplete(order._id, order.ticketNumber)} className="absolute inset-0 z-10 rounded-xl cursor-pointer hover:bg-amber-500/10 active:bg-amber-500/20 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-inset focus-visible:ring-amber-400 disabled:cursor-wait disabled:bg-gray-500/20" />
@@ -88,11 +75,11 @@ const OrderTicket = ({ order, onComplete, onPending, busy = false }: OrderTicket
       <span className={`${styles.timer} font-mono font-bold`}>{String(Math.floor(seconds / 60)).padStart(2, '0')}:{String(seconds % 60).padStart(2, '0')}</span>
     </header>
     <div ref={bodyRef} className={`${styles.ticketBody} flex-1 min-h-0 overflow-hidden mx-3 mt-1.5`} aria-label={`整理券${order.ticketNumber}番の商品内容`}>
-      <div ref={contentRef} className={styles.ticketContent}>
+      <div className={styles.ticketContent}>
         {lines.map((line, i) => <p key={i} className={line.kind === 'product' ? 'font-bold text-gray-900' : line.kind === 'option' ? 'text-orange-800' : 'text-blue-800'}>{line.text || '\u00a0'}</p>)}
       </div>
     </div>
-    <div className="py-1 flex items-center justify-center shrink-0 text-gray-500"><span className="text-xs">{order.items.reduce((sum, item) => sum + item.quantity, 0)}点</span></div>
+    <div className="py-1 flex items-center justify-center shrink-0 text-gray-500"><span className="text-xs">{parts > 1 ? (part === 0 ? '次の枠へ続く' : '続き') + '（' + (part + 1) + '/' + parts + '）' : order.items.reduce((sum, item) => sum + item.quantity, 0) + '点'}</span></div>
     <footer className="grid grid-cols-[1fr_2fr] gap-1.5 p-1.5 pt-0 shrink-0">
       <button type="button" disabled={busy} onClick={() => onPending(order._id, order.ticketNumber)} className="ui-button ui-button--secondary relative z-20 py-1.5 text-xs disabled:opacity-40">保留</button>
       <span className="ui-button ui-button--primary text-xs">{busy ? '更新中…' : '押して提供済みにする'}</span>
@@ -100,6 +87,10 @@ const OrderTicket = ({ order, onComplete, onPending, busy = false }: OrderTicket
   </article>;
 };
 export default function KitchenDisplaySystem() {
+  const [capacity, setCapacity] = useState({ columns: 12, rows: 3 });
+  const measureTicket = useCallback((columns: number, rows: number) => {
+    setCapacity(previous => previous.columns === columns && previous.rows === rows ? previous : { columns, rows });
+  }, []);
   const soundPlayer = useRef<ReturnType<typeof createKitchenSoundPlayer> | null>(null);
   const orderTracker = useRef<ReturnType<typeof createKitchenOrderTracker> | null>(null);
   const [soundEnabled, setSoundEnabled] = useState(false);
@@ -204,7 +195,11 @@ export default function KitchenDisplaySystem() {
 
   const activeOrders = orders.filter(o => o.status === 'active');
   const pendingOrders = orders.filter(o => o.status === 'pending');
-  const orderPages = Math.max(1, Math.ceil(activeOrders.length / 6));
+  const orderCards = activeOrders.flatMap(order => {
+    const chunks = splitKitchenOrder(order, capacity.columns, capacity.rows);
+    return chunks.map((lines, part) => ({ order, lines, part, parts: chunks.length }));
+  });
+  const orderPages = Math.max(1, Math.ceil(orderCards.length / 6));
   const currentOrderPage = Math.min(orderPage, orderPages - 1);
   const summary = summarizeKitchenOrders(orders);
   const summaryPages = Math.max(1, Math.ceil(summary.length / 6));
@@ -231,7 +226,7 @@ export default function KitchenDisplaySystem() {
         </div>
         <div className="flex-1 min-h-0 overflow-hidden">
           {activeOrders.length === 0 ? <div className="flex flex-col justify-center items-center h-full text-gray-600"><p className="text-3xl font-black opacity-20 tracking-widest">{loading ? '読み込み中…' : fetchError ? '取得できません' : '調理中の注文はありません'}</p></div> :
-            <div className="h-full min-h-0 grid grid-cols-2 grid-rows-3 lg:grid-cols-3 lg:grid-rows-2 gap-2">{activeOrders.slice(currentOrderPage * 6, currentOrderPage * 6 + 6).map((order) => <OrderTicket key={order._id} busy={busy.includes(order._id)} order={order} onComplete={(id: string, num: string) => updateStatus(id, num, 'completed')} onPending={(id: string, num: string) => updateStatus(id, num, 'pending')} />)}</div>
+            <div className="h-full min-h-0 grid grid-cols-2 grid-rows-3 lg:grid-cols-3 lg:grid-rows-2 gap-2">{orderCards.slice(currentOrderPage * 6, currentOrderPage * 6 + 6).map(({ order, lines, part, parts }) => <OrderTicket key={order._id + '-' + part} lines={lines} part={part} parts={parts} onMeasure={measureTicket} busy={busy.includes(order._id)} order={order} onComplete={(id: string, num: string) => updateStatus(id, num, 'completed')} onPending={(id: string, num: string) => updateStatus(id, num, 'pending')} />)}</div>
           }
         </div>
         <div className="pt-2 shrink-0"><Pager page={currentOrderPage} count={orderPages} onChange={setOrderPage} label="調理中の注文" /></div>

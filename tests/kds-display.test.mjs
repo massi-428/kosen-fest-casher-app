@@ -2,7 +2,17 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createLoader } from './support/load-ts.mjs';
 
-const { summarizeKitchenOrders, wrapKitchenText } = createLoader()('src/lib/kds-display.ts');
+const { summarizeKitchenOrders, wrapKitchenText, splitKitchenOrder } = createLoader()('src/lib/kds-display.ts');
+
+test('overflow uses successive cards without dropping product, option or note text', () => {
+  const order = { items: [{ productName: 'たこ焼き', quantity: 1, selectedOptions: [{ name: 'ねぎ増量' }], detail: 'ソース少なめ' }, { productName: 'お茶', quantity: 2 }], note: 'まとめて提供' };
+  const cards = splitKitchenOrder(order, 5, 2);
+  assert.ok(cards.length > 1);
+  assert.ok(cards.every(card => card.length <= 2));
+  assert.equal(cards.flat().map(line => line.text).join(''), 'たこ焼きねぎ増量メモ: ソース少なめお茶 ×2注文メモ: まとめて提供');
+  assert.deepEqual(splitKitchenOrder(order, 5, 100).flat(), cards.flat());
+  assert.equal(splitKitchenOrder({ items: [{ productName: 'お茶', quantity: 1 }] }, 12, 3).length, 1);
+});
 
 test('kitchen totals count quantities across all orders and separate pending from active', () => {
   const orders = Array.from({ length: 7 }, () => ({ status: 'active', items: [{ productId: 'a', productName: 'たこ焼き', quantity: 2 }] }));

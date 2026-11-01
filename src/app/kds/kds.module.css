@@ -6,8 +6,7 @@
 }
 .ticketContent {
   line-height: 1.3;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
+  white-space: pre;
 }
 .summary p[title] { font-size: clamp(.875rem, 1.25vw, 1.25rem); }
 .summary :global(.tabular-nums) { font-size: clamp(1.5rem, 2vw, 2rem); }
