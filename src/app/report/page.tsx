@@ -3,6 +3,7 @@
 import { useRef, useState, useEffect, useCallback, useMemo } from 'react';
 
 import { isSalesOrder, type Settlement } from '@/lib/order-accounting';
+import { summarizeSalesByPayment } from '@/lib/payment-sales';
 import { BusinessDayPanel } from '@/components/common/BusinessDayPanel';
 
 // --- ユーティリティ ---
@@ -136,22 +137,7 @@ export default function ReportPage() {
   }, [orders]);
 
   // 3. 支払い方法別集計
-  const paymentSummary = useMemo(() => {
-    const summary: { [key: string]: { count: number; amount: number } } = {};
-
-    orders.forEach(order => {
-      const method = order.paymentMethod || '未設定';
-      if (!summary[method]) {
-        summary[method] = { count: 0, amount: 0 };
-      }
-      summary[method].count += 1;
-      summary[method].amount += order.totalAmount;
-    });
-
-    return Object.entries(summary)
-      .map(([name, data]) => ({ name, ...data }))
-      .sort((a, b) => b.amount - a.amount);
-  }, [orders]);
+  const paymentSummary = useMemo(() => summarizeSalesByPayment(orders), [orders]);
 
   // 4. 時間帯別売上
   const hourlySales = useMemo(() => {
@@ -347,17 +333,37 @@ export default function ReportPage() {
         <div className="space-y-6">
           {/* 支払い方法別 */}
           <div className="bg-white p-6 rounded-xl shadow">
-            <h2 className="text-xl font-bold text-gray-700 mb-4 border-b pb-2">支払い方法別</h2>
-            <div className="space-y-3">
+            <h2 className="text-xl font-bold text-gray-700 mb-2 border-b pb-2">決済方法別の商品販売数</h2>
+            <p className="mb-4 text-sm text-gray-500">注文に登録された決済方法ごとに、変更後の商品数量を集計します。キャンセルは除き、オプション違いは同じ商品名にまとめます。</p>
+            <div className="space-y-5">
               {paymentSummary.length === 0 ? (
                 <p className="text-center text-gray-400 py-4">この日の対象データはありません</p>
               ) : (
                 paymentSummary.map((item) => (
-                  <div key={item.name} className="flex justify-between items-center">
-                    <span className="font-bold text-gray-700 w-1/3">{item.name}</span>
-                    <span className="text-gray-500 text-sm">{item.count}件</span>
-                    <span className="font-bold text-gray-800 font-mono">¥{item.amount.toLocaleString()}</span>
-                  </div>
+                  <section key={item.name} aria-label={`${item.name}の商品販売数`} className="rounded-lg border border-gray-200 overflow-hidden">
+                    <div className="flex flex-wrap justify-between items-center gap-2 bg-gray-50 p-3">
+                      <h3 className="font-bold text-gray-800 break-all">{item.name}</h3>
+                      <span className="text-gray-600 text-sm">{item.count.toLocaleString()}件 / {item.quantity.toLocaleString()}個</span>
+                      <span className="font-bold text-gray-800 font-mono">¥{item.amount.toLocaleString()}</span>
+                    </div>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <caption className="sr-only">{item.name}の商品別数量と売上金額</caption>
+                        <thead className="text-gray-500 text-left">
+                          <tr><th scope="col" className="p-3">商品名</th><th scope="col" className="p-3 text-right whitespace-nowrap">販売数</th><th scope="col" className="p-3 text-right whitespace-nowrap">金額</th></tr>
+                        </thead>
+                        <tbody>
+                          {item.products.map(product => (
+                            <tr key={product.name} className="border-t border-gray-100">
+                              <th scope="row" className="p-3 text-left font-medium break-all">{product.name}</th>
+                              <td className="p-3 text-right font-bold whitespace-nowrap">{product.quantity.toLocaleString()}個</td>
+                              <td className="p-3 text-right font-mono whitespace-nowrap">¥{product.amount.toLocaleString()}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </section>
                 ))
               )}
             </div>
